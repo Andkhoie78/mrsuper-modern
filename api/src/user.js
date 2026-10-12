@@ -1,3 +1,4 @@
+import {r2Enabled,getR2} from './r2-storage.js';
 import crypto from 'node:crypto';
 import {q,one,insert,update,page,http,requireFields,safeInt,str,saveUpload,notify,notifyAdmins,pool,cleanUser} from './core.js';
 import {requireAuth,optionalAuth} from './auth.js';
@@ -28,6 +29,35 @@ export function userRoutes(app){
  app.get('/api/user/support/:id',async(req)=>{const u=await requireAuth(req),t=await one('SELECT * FROM support_tickets WHERE id=? AND user_id=?',[safeInt(req.params.id),u.id]);if(!t)throw http(404,'Ticket not found.');return{...t,messages:await q('SELECT m.*,u.name,u.is_admin FROM support_messages m JOIN users u ON u.id=m.user_id WHERE m.support_ticket_id=? ORDER BY m.id',[t.id])}});
  app.post('/api/user/support/:id/reply',async(req,reply)=>{const u=await requireAuth(req),t=await one('SELECT * FROM support_tickets WHERE id=? AND user_id=?',[safeInt(req.params.id),u.id]);if(!t)throw http(404,'Ticket not found.');if(t.status==='closed')throw http(422,'Ticket closed.');const text=String(req.body?.message||'');if(!text||text.length>5000)throw http(422,'Invalid message.');const id=await insert('support_messages',{support_ticket_id:t.id,user_id:u.id,message:text});return reply.code(201).send(await one('SELECT * FROM support_messages WHERE id=?',[id]))});
  app.get('/api/videos/:id/playback',async(req)=>{const v=await one("SELECT * FROM videos WHERE id=? AND status='published'",[safeInt(req.params.id)]);if(!v)throw http(404,'Video not found.');const u=await optionalAuth(req);if(!await canPlay(u,v))throw http(403,'Purchase required to play this video.');const t=crypto.randomBytes(20).toString('hex');await q('INSERT INTO node_playback_tokens(token_hash,video_id,user_id,expires_at) VALUES(?,?,?,DATE_ADD(NOW(),INTERVAL 15 MINUTE))',[crypto.createHash('sha256').update(t).digest('hex'),v.id,u?.id||null]);return{playback_url:`${process.env.API_PUBLIC_ORIGIN||''}/api/media/${v.id}/stream?token=${t}`,watermark:u?{id:u.id,email:u.email}:null}});
- app.get('/api/media/:id/stream',async(req,reply)=>{const id=safeInt(req.params.id),token=String(req.query.token||'');if(!/^[0-9a-f]{40}$/.test(token))throw http(403,'Invalid playback token.');const t=await one('SELECT * FROM node_playback_tokens WHERE token_hash=? AND video_id=? AND expires_at>NOW()',[crypto.createHash('sha256').update(token).digest('hex'),id]);if(!t)throw http(403,'Playback expired.');const v=await one("SELECT * FROM videos WHERE id=? AND status='published'",[id]);if(!v)throw http(404,'Not found.');const raw=String(v.video_path||'');if(!/^[a-zA-Z0-9_./-]+$/.test(raw)||raw.includes('..'))throw http(404,'Video unavailable.');const file=join(mediaRoot,'private','videos',raw);const info=await new Promise((yes,no)=>stat(file,(e,s)=>e?no(e):yes(s))).catch(()=>null);if(!info)throw http(404,'Video unavailable.');const range=req.headers.range;reply.header('Accept-Ranges','bytes').header('Content-Type',v.mime_type||'video/mp4').header('Cache-Control','private,no-store');let start=0,end=info.size-1;if(range){const match=/^bytes=(\d+)-(\d*)$/.exec(range);if(!match)throw http(416,'Invalid range.');start=Number(match[1]);end=match[2]?Math.min(Number(match[2]),end):end;if(start>end||start>=info.size)throw http(416,'Invalid range.');reply.code(206).header('Content-Range',`bytes ${start}-${end}/${info.size}`)}reply.header('Content-Length',end-start+1);return reply.send(createReadStream(file,{start,end}));});
+ app.get('/api/media/:id/stream',async(req,reply)=>{
+  const id=safeInt(req.params.id),token=String(req.query.token||'');
+  if(!/^[0-9a-f]{40}$/.test(token))throw http(403,'Invalid playback token.');
+  const t=await one('SELECT * FROM node_playback_tokens WHERE token_hash=? AND video_id=? AND expires_at>NOW()',[crypto.createHash('sha256').update(token).digest('hex'),id]);
+  if(!t)throw http(403,'Playback expired.');
+  const v=await one("SELECT * FROM videos WHERE id=? AND status='published'",[id]);
+  if(!v)throw http(404,'Not found.');
+  const raw=String(v.video_path||'');
+  if(!/^[a-zA-Z0-9_./-]+$/.test(raw)||raw.includes('..')||raw.startsWith('/'))throw http(404,'Video unavailable.');
+  const key=raw.startsWith('private/videos/')?raw:`private/videos/${raw}`;
+  if(!/^private\/videos\/[a-zA-Z0-9_-]+\.(?:mp4|webm)$/.test(key))throw http(404,'Video unavailable.');
+  const range=req.headers.range;
+  if(range&&!/^bytes=\d+-\d*$/.test(range))throw http(416,'Invalid byte range.');
+  reply.header('Accept-Ranges','bytes').header('Content-Type',v.mime_type||'video/mp4').header('Cache-Control','private,no-store').header('X-Content-Type-Options','nosniff');
+  if(r2Enabled){
+    const item=await getR2('private',key,range);
+    if(!item)throw http(404,'Video unavailable.');
+    reply.code(item.ContentRange?206:200);
+    if(item.ContentRange)reply.header('Content-Range',item.ContentRange);
+    if(item.ContentLength!=null)reply.header('Content-Length',item.ContentLength);
+    return reply.send(item.Body);
+  }
+  const file=join(mediaRoot,key);
+  const info=await new Promise((yes,no)=>stat(file,(e,s)=>e?no(e):yes(s))).catch(()=>null);
+  if(!info)throw http(404,'Video unavailable.');
+  let start=0,end=info.size-1;
+  if(range){const match=/^bytes=(\d+)-(\d*)$/.exec(range);start=Number(match[1]);end=match[2]?Math.min(Number(match[2]),end):end;if(start>end||start>=info.size)throw http(416,'Invalid range.');reply.code(206).header('Content-Range',`bytes ${start}-${end}/${info.size}`);}
+  reply.header('Content-Length',end-start+1);
+  return reply.send(createReadStream(file,{start,end}));
+ });
 }
 function notificationView(n){let data=n.data;try{if(typeof data==='string')data=JSON.parse(data)}catch{}return{...n,data}}

@@ -1,3 +1,4 @@
+import {r2Enabled,getR2} from './r2-storage.js';
 import {q,one,insert,update,page,http,requireFields,safeInt,str,bool,slug,prepared,fields,saveUpload,clearCache,pool,notify,cleanUser,mediaRoot} from './core.js';
 import {requireAdmin} from './auth.js';
 import {decorateCourses,decorateVideos} from './public.js';
@@ -44,7 +45,24 @@ export function adminRoutes(app){
  app.get('/api/admin/payments/:id',async(req)=>{await requireAdmin(req);return paymentDetails(await requireRow('payments',req.params.id))});
  app.post('/api/admin/payments/:id/approve',async(req)=>{const admin=await requireAdmin(req),id=safeInt(req.params.id);const conn=await pool.getConnection();let payment;try{await conn.beginTransaction();const [r]=await conn.execute('SELECT * FROM payments WHERE id=? FOR UPDATE',[id]);payment=r[0];if(!payment)throw http(404,'Payment not found.');if(payment.provider!=='bank_transfer'||payment.status!=='pending')throw http(422,'Only pending manual payments may be approved.');await conn.execute("UPDATE payments SET status='approved',reviewed_by=?,reviewed_at=NOW(),rejection_reason=NULL WHERE id=?",[admin.id,id]);await conn.execute(`INSERT INTO entitlements (user_id,content_type,content_id,payment_id,granted_at,created_at,updated_at) VALUES (?,?,?,?,NOW(),NOW(),NOW()) ON DUPLICATE KEY UPDATE payment_id=VALUES(payment_id),granted_at=NOW(),expires_at=NULL,updated_at=NOW()`,[payment.user_id,payment.content_type,payment.content_id,id]);await conn.commit();}catch(e){await conn.rollback();throw e}finally{conn.release()}await notify(payment.user_id,'Payment approved','Your payment was approved. You can now join the course.','/dashboard/payments');return{message:'Payment approved and access granted.',payment:await requireRow('payments',id)}});
  app.post('/api/admin/payments/:id/reject',async(req)=>{const admin=await requireAdmin(req),id=safeInt(req.params.id),reason=String(req.body?.reason||'').trim();if(!reason||reason.length>2000)throw http(422,'Reason required.');const conn=await pool.getConnection();let p;try{await conn.beginTransaction();const [rows]=await conn.execute('SELECT * FROM payments WHERE id=? FOR UPDATE',[id]);p=rows[0];if(!p)throw http(404,'Not found.');if(p.status!=='pending'||p.provider!=='bank_transfer')throw http(422,'Payment already reviewed.');await conn.execute("UPDATE payments SET status='rejected',rejection_reason=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?",[reason,admin.id,id]);await conn.commit()}catch(e){await conn.rollback();throw e}finally{conn.release()}await notify(p.user_id,'Payment rejected',reason,'/dashboard/payments');return{message:'Payment rejected.',payment:await requireRow('payments',id)}});
- app.get('/api/admin/payments/:id/receipt',async(req,reply)=>{await requireAdmin(req);const p=await requireRow('payments',req.params.id),path=String(p.receipt_path||'');if(!/^(?:private\/receipts\/[0-9]+\/[a-f0-9]+|[0-9]+\/[A-Za-z0-9_-]+)\.(jpg|jpeg|png|webp|pdf)$/.test(path))throw http(404,'Receipt missing.');const filename=path.startsWith('private/')?join(mediaRoot,path):join(mediaRoot,'private','receipts',path);const meta=await stat(filename).catch(()=>null);if(!meta)throw http(404,'Receipt not found.');reply.header('Cache-Control','private,no-store').header('Content-Type',path.endsWith('pdf')?'application/pdf':path.endsWith('png')?'image/png':path.endsWith('webp')?'image/webp':'image/jpeg').header('Content-Disposition','inline');return reply.send(createReadStream(filename))});
+ app.get('/api/admin/payments/:id/receipt',async(req,reply)=>{
+  await requireAdmin(req);
+  const p=await requireRow('payments',req.params.id),path=String(p.receipt_path||'');
+  if(!/^(?:private\/receipts\/[0-9]+\/[a-f0-9]+|[0-9]+\/[A-Za-z0-9_-]+)\.(jpg|jpeg|png|webp|pdf)$/.test(path))throw http(404,'Receipt missing.');
+  const key=path.startsWith('private/')?path:`private/receipts/${path}`;
+  const contentType=path.endsWith('.pdf')?'application/pdf':path.endsWith('.png')?'image/png':path.endsWith('.webp')?'image/webp':'image/jpeg';
+  reply.header('Cache-Control','private,no-store').header('X-Content-Type-Options','nosniff').header('Content-Type',contentType).header('Content-Disposition','inline');
+  if(r2Enabled){
+    const item=await getR2('private',key);
+    if(!item)throw http(404,'Receipt not found.');
+    if(item.ContentLength!=null)reply.header('Content-Length',item.ContentLength);
+    return reply.send(item.Body);
+  }
+  const filename=join(mediaRoot,key);
+  const meta=await stat(filename).catch(()=>null);
+  if(!meta)throw http(404,'Receipt not found.');
+  return reply.send(createReadStream(filename));
+ });
  app.get('/api/admin/users',async(req)=>{await requireAdmin(req);const p=[],conds=['is_admin=0'];if(req.query.q){conds.push('(name LIKE ? OR email LIKE ?)');p.push(...Array(2).fill('%'+String(req.query.q).slice(0,100)+'%'))}if(req.query.status){conds.push('status=?');p.push(req.query.status)}const r=await page('SELECT id,name,email,email_verified_at,phone,locale,status,created_at FROM users WHERE '+conds.join(' AND ')+' ORDER BY id DESC',p,req,25);for(const u of r.data){u.payments_count=(await one('SELECT COUNT(*) n FROM payments WHERE user_id=?',[u.id])).n;u.entitlements_count=(await one('SELECT COUNT(*) n FROM entitlements WHERE user_id=?',[u.id])).n}return r});
  app.get('/api/admin/users/:id',async(req)=>{await requireAdmin(req);const u=await requireRow('users',req.params.id);if(u.is_admin)throw http(404,'Not found.');return{...cleanUser(u),payments:await q('SELECT * FROM payments WHERE user_id=? ORDER BY id DESC',[u.id]),entitlements:await q('SELECT * FROM entitlements WHERE user_id=? ORDER BY id DESC',[u.id])}});
  app.patch('/api/admin/users/:id/status',async(req)=>{await requireAdmin(req);const u=await requireRow('users',req.params.id);if(u.is_admin)throw http(403,'Cannot change admin status.');if(!['active','inactive','blocked'].includes(req.body?.status))throw http(422,'Invalid status.');await update('users',u.id,{status:req.body.status});if(req.body.status!=='active')await q('DELETE FROM node_sessions WHERE user_id=?',[u.id]);return{message:'User status updated.',user:cleanUser(await requireRow('users',u.id))}});

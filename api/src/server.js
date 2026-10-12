@@ -8,6 +8,7 @@ import staticPlugin from '@fastify/static';
 import {resolve} from 'node:path';
 import {mkdir} from 'node:fs/promises';
 import {http,pool,mediaRoot,q} from './core.js';
+import {r2Enabled,getR2,publicKeyValid} from './r2-storage.js';
 import {authRoutes} from './auth.js';
 import {publicRoutes} from './public.js';
 import {userRoutes} from './user.js';
@@ -28,7 +29,28 @@ app.addHook('preHandler',async(req)=>{if(['GET','HEAD','OPTIONS'].includes(req.m
 app.addHook('onResponse',async(req,reply)=>{if(!req.adminActor||req.method==='GET'||!req.url.startsWith('/api/admin/'))return;try{await q('INSERT INTO activity_logs(user_id,action,subject_type,metadata,ip_address,user_agent,created_at,updated_at) VALUES(?,?,?,?,?,?,NOW(),NOW())',[req.adminActor.id,req.method+' '+req.url.split('?')[0],'admin_api',JSON.stringify({status:reply.statusCode}),req.ip,String(req.headers['user-agent']||'').slice(0,500)])}catch(e){req.log.error({err:e},'Admin audit log write failed')}});
 app.setErrorHandler((err,req,reply)=>{if(err.code==='ER_DUP_ENTRY')return reply.code(422).send({message:'This record already exists.'});const status=err.statusCode>=400&&err.statusCode<600?err.statusCode:500;if(status>=500)req.log.error(err);reply.code(status).send({message:status>=500?'Internal server error. Please retry.':err.message,errors:err.validation?{form:['Invalid input']}:undefined})});
 app.setNotFoundHandler((req,reply)=>reply.code(404).send({message:'Route not found.'}));
-const publicFolder=resolve(mediaRoot,'public');await mkdir(publicFolder,{recursive:true});await app.register(staticPlugin,{root:publicFolder,prefix:'/storage/',decorateReply:false,wildcard:true,setHeaders:res=>res.setHeader('Cache-Control','public, max-age=604800, immutable')});
+if(r2Enabled){
+  app.get('/storage/*',async(req,reply)=>{
+    const key=String(req.params['*']||'');
+    if(!publicKeyValid(key))throw http(404,'File not found.');
+    const range=req.headers.range;
+    if(range&&!/^bytes=\d+-\d*$/.test(range))throw http(416,'Invalid byte range.');
+    const item=await getR2('public',key,range);
+    if(!item)throw http(404,'File not found.');
+    reply.code(item.ContentRange?206:200)
+      .header('Cache-Control','public,max-age=604800,immutable')
+      .header('X-Content-Type-Options','nosniff')
+      .header('Content-Type',item.ContentType||'application/octet-stream')
+      .header('Accept-Ranges','bytes');
+    if(item.ContentRange)reply.header('Content-Range',item.ContentRange);
+    if(item.ContentLength!=null)reply.header('Content-Length',item.ContentLength);
+    return reply.send(item.Body);
+  });
+}else{
+  const publicFolder=resolve(mediaRoot,'public');
+  await mkdir(publicFolder,{recursive:true});
+  await app.register(staticPlugin,{root:publicFolder,prefix:'/storage/',decorateReply:false,wildcard:true,setHeaders:res=>res.setHeader('Cache-Control','public, max-age=604800, immutable')});
+}
 authRoutes(app);publicRoutes(app);userRoutes(app);adminRoutes(app);
 try{await pool.query('SELECT 1');await app.listen({host:'0.0.0.0',port:Number(process.env.PORT||3200)});}catch(e){app.log.error(e);process.exit(1)}
 process.on('SIGTERM',async()=>{await app.close();await pool.end();process.exit(0)});

@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
+import {r2Enabled,putR2} from './r2-storage.js';
 import {mkdir, writeFile, readFile, stat} from 'node:fs/promises';
 import {resolve, join, extname} from 'node:path';
 
@@ -45,7 +46,32 @@ export const prepared=(table,input,editing=false)=>{const out={};for(const key o
 export const insert=async(table,data,conn=pool)=>{const keys=Object.keys(data);if(!keys.length)throw http(422,'Empty data.');const [result]=await conn.execute(`INSERT INTO ${table} (${keys.map(k=>`\`${k}\``).join(',')},created_at,updated_at) VALUES (${keys.map(()=>'?').join(',')},NOW(),NOW())`,keys.map(k=>data[k]===undefined?null:data[k]));return result.insertId};
 export const update=async(table,id,data,conn=pool)=>{const keys=Object.keys(data);if(!keys.length)return;await conn.execute(`UPDATE ${table} SET ${keys.map(k=>`\`${k}\`=?`).join(',')},updated_at=NOW() WHERE id=?`,[...keys.map(k=>data[k]===undefined?null:data[k]),id]);};
 export const mediaRoot=resolve(process.env.STORAGE_ROOT||'./storage');
-export const saveUpload=async(file,sub='public/misc',max=8*1024*1024,allowed=['image/jpeg','image/png','image/webp'])=>{if(!file)throw http(422,'File required.');if(!allowed.includes(file.mimetype))throw http(422,'Unsupported file type.');const bytes=await file.toBuffer();if(bytes.length>max)throw http(413,'File exceeds limit.');const sig=bytes.subarray(0,12);const jpg=sig[0]===0xff&&sig[1]===0xd8, png=sig.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')), webp=sig.toString('ascii',8,12)==='WEBP',pdf=sig.toString('ascii',0,5)==='%PDF-',mp4=sig.toString('ascii',4,8)==='ftyp',webm=sig.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]));if(!(jpg&&file.mimetype==='image/jpeg'||png&&file.mimetype==='image/png'||webp&&file.mimetype==='image/webp'||pdf&&file.mimetype==='application/pdf'||mp4&&file.mimetype==='video/mp4'||webm&&file.mimetype==='video/webm'))throw http(422,'File signature does not match file type.');const ext={'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp','application/pdf':'.pdf','video/mp4':'.mp4','video/webm':'.webm'}[file.mimetype];const name=crypto.randomBytes(18).toString('hex')+ext;const dir=join(mediaRoot,sub);await mkdir(dir,{recursive:true});await writeFile(join(dir,name),bytes,{flag:'wx'});return `${sub.replace(/^public\//,'')}/${name}`;};
+export const saveUpload=async(file,sub='public/misc',max=8*1024*1024,allowed=['image/jpeg','image/png','image/webp'])=>{
+  if(!file)throw http(422,'File required.');
+  if(!allowed.includes(file.mimetype))throw http(422,'Unsupported file type.');
+  const bytes=await file.toBuffer();
+  if(bytes.length>max)throw http(413,'File exceeds limit.');
+  const sig=bytes.subarray(0,12);
+  const jpg=sig[0]===0xff&&sig[1]===0xd8;
+  const png=sig.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex'));
+  const webp=sig.toString('ascii',8,12)==='WEBP';
+  const pdf=sig.toString('ascii',0,5)==='%PDF-';
+  const mp4=sig.toString('ascii',4,8)==='ftyp';
+  const webm=sig.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]));
+  if(!(jpg&&file.mimetype==='image/jpeg'||png&&file.mimetype==='image/png'||webp&&file.mimetype==='image/webp'||pdf&&file.mimetype==='application/pdf'||mp4&&file.mimetype==='video/mp4'||webm&&file.mimetype==='video/webm'))throw http(422,'File signature does not match file type.');
+  const ext={'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp','application/pdf':'.pdf','video/mp4':'.mp4','video/webm':'.webm'}[file.mimetype];
+  const name=crypto.randomBytes(18).toString('hex')+ext;
+  const key=`${sub.replace(/^public\//,'')}/${name}`;
+  if(r2Enabled){
+    const privateFile=sub.startsWith('private/');
+    await putR2(privateFile?'private':'public',key,bytes,file.mimetype);
+  }else{
+    const dir=join(mediaRoot,sub);
+    await mkdir(dir,{recursive:true});
+    await writeFile(join(dir,name),bytes,{flag:'wx'});
+  }
+  return key;
+};
 const smtpSendMail=async(to,subject,text)=>{if(!process.env.SMTP_HOST)throw http(503,'Email service is not configured.');const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:process.env.SMTP_USER?{user:process.env.SMTP_USER,pass:process.env.SMTP_PASSWORD}:undefined});await transport.sendMail({from:process.env.SMTP_FROM||process.env.SMTP_USER,to,subject,text});};
 export const notify=async(userId,title,message,url='/dashboard',level='info',conn=pool)=>{await conn.execute(`INSERT INTO notifications(id,type,notifiable_type,notifiable_id,data,created_at,updated_at) VALUES(?, 'App\\\\Notifications\\\\PlatformNotification','App\\\\Models\\\\User',?,?,NOW(),NOW())`,[crypto.randomUUID(),userId,JSON.stringify({title,message,url,type:level})]);};
 export const notifyAdmins=async(title,message,url)=>{const admins=await q("SELECT id FROM users WHERE is_admin=1 AND status='active'");await Promise.all(admins.map(u=>notify(u.id,title,message,url).catch(()=>{})))};

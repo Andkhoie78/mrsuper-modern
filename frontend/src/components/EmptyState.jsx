@@ -1,0 +1,1 @@
+import {Inbox} from 'lucide-react';export default function EmptyState({title='Nothing here yet',text='Content will appear here when available.'}){return <div className="card flex min-h-44 flex-col items-center justify-center p-8 text-center"><Inbox className="mb-3 muted"/><h3 className="font-bold">{title}</h3><p className="mt-1 text-sm muted">{text}</p></div>}

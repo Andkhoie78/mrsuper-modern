@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0718">
+<title>یک سورپرایز برات دارم! 🎁 | MrSuper</title>
+<meta name="description" content="یک سورپرایز کوچک، یک شروع بزرگ — MR SUPER">
+<style>
+:root{color-scheme:dark;--gold:#ffe7ab;--ink:#070712;--violet:#ac7aff;--cyan:#76eaff;--muted:#c4c0d4;--surface:rgba(26,19,48,.64)}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;width:100%;font-family:Tahoma,"Segoe UI",sans-serif;background:#080513;color:#fff}
+body{min-height:100svh;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;background:radial-gradient(ellipse at 22% 20%,#4d20754d,transparent 48%),radial-gradient(ellipse at 85% 70%,#0a5e6c43,transparent 50%),linear-gradient(145deg,#090614,#100922 60%,#080916);pointer-events:none}
+.noise{position:fixed;inset:0;opacity:.25;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.6' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.14'/%3E%3C/svg%3E")}
+#fireworks{position:fixed;inset:0;display:block;width:100%;height:100%;z-index:2;pointer-events:none}
+.stars{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.star{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;box-shadow:0 0 8px 1px #fff9;animation:twinkle var(--dur,3s) ease-in-out infinite alternate}
+@keyframes twinkle{from{opacity:.1;transform:scale(.4)}to{opacity:.92;transform:scale(1.4)}}
+.shell{position:relative;z-index:3;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:40px 20px 34px}
+.stage{max-width:590px;width:100%;text-align:center;position:relative}
+.eyebrow{font:700 clamp(11px,2.5vw,13px) Tahoma,sans-serif;letter-spacing:2px;color:#b7a1da;text-transform:uppercase;margin-bottom:17px;opacity:0;transform:translateY(14px)}
+.eyebrow.show{animation:fadeup .8s ease forwards}
+.glow{position:absolute;width:320px;height:320px;max-width:80vw;top:-65px;left:50%;transform:translateX(-50%);border-radius:50%;background:#9d66ff16;filter:blur(35px);z-index:-1;pointer-events:none}
+.gift{font-size:72px;display:block;line-height:1.25;filter:drop-shadow(0 0 24px #e5af397a);transform-origin:center;animation:giftbounce 2.1s ease-in-out infinite;cursor:pointer;user-select:none;max-width:max-content;margin:0 auto 8px;border:0;background:transparent;padding:0}
+.gift:focus-visible,.btn:focus-visible,button:focus-visible{outline:3px solid #ffe4a3;outline-offset:4px}
+@keyframes giftbounce{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-9px) rotate(4deg)}}
+.intro-msg{font-size:clamp(22px,5.2vw,32px);font-weight:800;margin:6px 0 12px;color:#fff9e4}
+.intro-sub{font-size:14px;line-height:2;color:var(--muted);margin:0 0 24px}
+.intro-btn{cursor:pointer;background:linear-gradient(110deg,#fff1c7,#ffd582);color:#2f1a16;border:0;border-radius:16px;padding:15px 27px;font:800 16px Tahoma,sans-serif;box-shadow:0 8px 30px #ffdb7850;transition:transform .18s,box-shadow .18s}
+.intro-btn:hover{transform:translateY(-3px);box-shadow:0 12px 36px #ffdb7870}
+#intro{transition:opacity .48s ease,transform .48s ease;position:relative}
+#intro.dismissed{opacity:0;transform:translateY(-18px) scale(.98);pointer-events:none;position:absolute;inset:0}
+#reveal{display:none;opacity:0;transform:translateY(16px)}
+#reveal.shown{display:block;animation:fadeup .78s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes fadeup{to{opacity:1;transform:translateY(0)}}
+.topline{display:inline-flex;align-items:center;gap:8px;direction:ltr;border:1px solid #ab94ed55;border-radius:60px;padding:10px 16px;background:#35245355;color:#e4d4ff;font-size:11px;font-weight:800;letter-spacing:3px;margin-bottom:24px;box-shadow:0 0 35px #b78cff1e}
+.topline .dot{width:7px;height:7px;border-radius:50%;background:#80ffca;box-shadow:0 0 12px #80ffca}
+h1{font-family:Arial,"Segoe UI",sans-serif;direction:ltr;font-weight:900;font-size:clamp(61px,13vw,102px);line-height:.94;letter-spacing:-5px;margin:0 auto 12px;background:linear-gradient(155deg,#fff 5%,#fff4bf 42%,#d3a1f9 82%);background-clip:text;-webkit-background-clip:text;color:transparent;text-shadow:0 10px 50px #c287ff20;filter:drop-shadow(0 2px 30px #e6a75a40)}
+.smallcap{font-size:13px;letter-spacing:3px;color:#9e89c9;margin:14px 0 23px;font-family:Arial,sans-serif}
+.divider{width:60px;height:3px;border-radius:100px;background:linear-gradient(90deg,#cd8fff,#ffe59b);margin:0 auto 24px;box-shadow:0 0 24px #ffe0aa76}
+.headline{font-size:clamp(23px,6vw,36px);line-height:1.7;color:#fff;font-weight:900;margin:0 0 10px}
+.desc{font-size:clamp(13px,3.2vw,16px);color:#d5cce8;line-height:2.2;max-width:460px;margin:0 auto 24px;white-space:pre-line}
+.site{color:#ffe8b0;background:#241b3caa;border:1px solid #af98e244;border-radius:13px;padding:12px 19px;display:inline-flex;align-items:center;gap:9px;font:700 15px Arial,sans-serif;direction:ltr;max-width:100%;word-break:break-all;box-shadow:inset 0 1px 0 #fff1}
+.actions{display:flex;gap:11px;justify-content:center;flex-wrap:wrap;margin:22px 0 15px}
+.btn{border-radius:14px;padding:15px 21px;text-decoration:none;font-size:14px;font-weight:800;transition:transform .2s,box-shadow .2s;display:inline-flex;align-items:center;justify-content:center;gap:9px;min-width:165px;cursor:pointer;border:1px solid transparent}
+.btn:hover{transform:translateY(-3px)}
+.primary{background:linear-gradient(110deg,#fff0bd,#ffcf72);color:#302012;box-shadow:0 9px 26px #edba593c}
+.secondary{color:#f3eafc;background:#3c315f66;border-color:#b5a0d64e}
+.replay{border:0;background:none;color:#b5a4d2;text-decoration:underline;text-underline-offset:4px;cursor:pointer;font:12px Tahoma,sans-serif;padding:10px}
+.credit{font:10px Arial,sans-serif;color:#827392;letter-spacing:1.8px;margin-top:17px}
+#flash{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:0;background:radial-gradient(circle at center,#fffadd, #f9c7ff88 40%,transparent 85%)}
+#flash.burst{animation:flash .95s ease-out forwards}
+@keyframes flash{0%{opacity:0}12%{opacity:.56}100%{opacity:0}}
+#editPane{display:none;position:fixed;z-index:20;top:16px;right:16px;left:16px;max-width:460px;margin:auto;padding:17px;border:1px solid #b7a2d35e;border-radius:18px;background:#1b1531f5;box-shadow:0 16px 70px #000b;max-height:calc(100svh - 32px);overflow:auto;direction:rtl;text-align:right}
+#editPane.open{display:block}
+.editTitle{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800;font-size:17px;margin:0 0 14px}
+.field{display:block;color:#ddd0f0;font-size:12px;margin:0 0 11px;font-weight:700}
+.field input,.field textarea{display:block;width:100%;margin-top:6px;padding:11px 12px;font:14px Tahoma,sans-serif;background:#100b22;border:1px solid #a697bf69;border-radius:9px;color:#fff;resize:vertical;min-height:42px}
+.field textarea{min-height:72px}
+.field input:focus,.field textarea:focus{outline:2px solid #ab7dff}
+.editActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.editActions button{font:700 12px Tahoma,sans-serif;padding:11px 14px;border:0;border-radius:10px;cursor:pointer}
+#savePreview{background:#ebcc8c;color:#271913}#downloadEdited{background:#b78eff;color:#20152d}#editClose{background:#4d426a;color:white}
+.editToggle{display:none;position:fixed;z-index:19;bottom:15px;left:15px;border:1px solid #b8a0ed5e;border-radius:50px;padding:9px 14px;color:#f6e5ff;background:#3b255bdd;font:12px Tahoma,sans-serif;cursor:pointer}
+.editToggle.show{display:block}
+@media(max-width:480px){.shell{padding:28px 18px 48px}.smallcap{font-size:11px}.actions{flex-direction:column;align-items:center}.btn{width:min(100%,310px)}h1{letter-spacing:-3px}.site{font-size:13px}.gift{font-size:68px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}#reveal.shown{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="noise" aria-hidden="true"></div><div class="stars" id="stars" aria-hidden="true"></div><canvas id="fireworks" aria-hidden="true"></canvas><div id="flash" aria-hidden="true"></div>
+<main class="shell"><div class="stage"><div class="glow"></div>
+<section id="intro" aria-label="سورپرایز">
+<div class="eyebrow show">SOMETHING SPECIAL IS HERE</div>
+<button class="gift" id="giftTap" aria-label="باز کردن سورپرایز">🎁</button>
+<p class="intro-msg" id="introText">یک سورپرایز برات دارم!</p>
+<p class="intro-sub" id="introSub">یک چیز خاص آماده کردم... حاضری ببینیش؟ ✨</p>
+<button id="open" class="intro-btn">✨ بازش کن!</button>
+</section>
+<section id="reveal" aria-live="polite" aria-label="معرفی MrSuper">
+<div class="topline"><span class="dot"></span> THE BIG REVEAL</div>
+<h1 id="brand">MR SUPER</h1>
+<div class="smallcap">THE OFFICIAL WEBSITE IS LIVE</div>
+<div class="divider"></div>
+<h2 class="headline" id="headline">بالاخره رؤیای من آنلاین شد! 🚀</h2>
+<p class="desc" id="message">مدت‌ها روی این پروژه کار کردم و امروز خوشحالم که نتیجه‌اش را با تو شریک می‌سازم.\nبیا اولین کسی باش که آن را می‌بیند! ❤️</p>
+<div class="site" id="domain">🌐 mrsuper1398.com</div>
+<div class="actions"><a class="btn primary" id="visit" href="https://mrsuper1398.com" target="_blank" rel="noopener noreferrer">🌐 دیدن سایت</a><a class="btn secondary" id="login" href="https://mrsuper1398.com/login" target="_blank" rel="noopener noreferrer">🔐 ورود / ثبت‌نام</a></div>
+<button type="button" class="replay" id="replay">↻ دوباره سورپرایز را ببین</button>
+<div class="credit">MADE WITH LOVE • MR SUPER</div>
+</section>
+</div></main>
+<button type="button" class="editToggle" id="editToggle">✎ ویرایش انیمیشن</button>
+<aside id="editPane" role="dialog" aria-modal="false" aria-label="ویرایش متن انیمیشن">
+<div class="editTitle">✍️ ویرایش سورپرایز <button id="editClose" type="button">بستن ✕</button></div>
+<p style="font-size:11px;color:#bbb0d1;line-height:1.8">تغییرات را ببین و سپس «دانلود HTML ویرایش‌شده» را بزن. برای نمایش عمومی نسخه جدید باید آن فایل را دوباره منتشر کنی.</p>
+<label class="field">عنوان ابتدایی<input data-key="introText"></label>
+<label class="field">توضیح ابتدایی<input data-key="introSub"></label>
+<label class="field">نام پروژه<input data-key="brand"></label>
+<label class="field">متن سورپرایز<input data-key="headline"></label>
+<label class="field">پیام مخصوص دوستت<textarea data-key="message"></textarea></label>
+<label class="field">آدرس سایت<input data-key="siteUrl" dir="ltr"></label>
+<label class="field">آدرس صفحه ورود<input data-key="loginUrl" dir="ltr"></label>
+<label class="field">متن دکمه سایت<input data-key="siteButton"></label>
+<label class="field">متن دکمه ورود<input data-key="loginButton"></label>
+<div class="editActions"><button id="savePreview">👀 نمایش تغییرات</button><button id="downloadEdited">⬇ دانلود HTML ویرایش‌شده</button></div>
+</aside>
+<script type="application/json" id="initial-config">{"introText":"یک سورپرایز برات دارم!","introSub":"یک چیز خاص آماده کردم... حاضری ببینیش؟ ✨","brand":"MR SUPER","headline":"بالاخره رؤیای من آنلاین شد! 🚀","message":"مدت‌ها روی این پروژه کار کردم و امروز خوشحالم که نتیجه‌اش را با تو شریک می‌سازم.\nبیا اولین کسی باش که آن را می‌بیند! ❤️","siteUrl":"https://mrsuper1398.com","loginUrl":"https://mrsuper1398.com/login","siteButton":"🌐 دیدن سایت","loginButton":"🔐 ورود / ثبت‌نام"}</script>
+<script>
+(()=>{
+'use strict';
+let config=JSON.parse(document.getElementById('initial-config').textContent);
+const $=id=>document.getElementById(id);
+const safeUrl=x=>{try{const u=new URL(x);return u.protocol==='https:'?u.href:'https://mrsuper1398.com'}catch{return 'https://mrsuper1398.com'}};
+function render(){['introText','introSub','brand','headline','message'].forEach(k=>$(k).textContent=config[k]);const site=safeUrl(config.siteUrl),login=safeUrl(config.loginUrl);$('domain').textContent='🌐 '+new URL(site).host;$('visit').textContent=config.siteButton;$('visit').href=site;$('login').textContent=config.loginButton;$('login').href=login;document.title=(config.introText||'سورپرایز')+' | '+config.brand}
+render();
+const stars=$('stars');for(let i=0;i<38;i++){const e=document.createElement('span');e.className='star';e.style.left=(Math.random()*100)+'%';e.style.top=(Math.random()*100)+'%';e.style.setProperty('--dur',(1.6+Math.random()*4)+'s');e.style.animationDelay=(-Math.random()*4)+'s';stars.append(e)}
+const canvas=$('fireworks'),ctx=canvas.getContext('2d');let W=0,H=0,particles=[],rockets=[],raf=0,until=0,started=false;
+const colors=['#ffe4a1','#f5b5ff','#b6fcff','#fff','#ad95ff','#a8ffdb'];
+function resize(){const d=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=Math.round(W*d);canvas.height=Math.round(H*d);ctx.setTransform(d,0,0,d,0,0)}
+resize();addEventListener('resize',resize,{passive:true});
+function makeBurst(x,y,power=1){const count=Math.round(44*power),chosen=colors[Math.floor(Math.random()*colors.length)];for(let i=0;i<count;i++){const a=Math.PI*2*i/count+(Math.random()-.5)*.17,v=(1.8+Math.random()*3.4)*power,life=38+Math.random()*31;particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life,max:life,c:Math.random()>.78?'#fff':chosen,size:Math.random()*1.9+1})}}
+function launch(x){const targetY=Math.max(75,H*(.15+Math.random()*.34));rockets.push({x:x??W*(.1+Math.random()*.8),y:H+30,ty:targetY,vy:-(12+Math.random()*4),trail:[]})}
+function draw(){ctx.clearRect(0,0,W,H);ctx.globalCompositeOperation='lighter';
+ for(let r=rockets.length-1;r>=0;r--){const p=rockets[r];p.trail.push({x:p.x,y:p.y});if(p.trail.length>8)p.trail.shift();p.y+=p.vy;p.x+=Math.sin(p.y*.012)*.7;for(let j=0;j<p.trail.length;j++){const t=p.trail[j];ctx.fillStyle=`rgba(255,227,158,${j/p.trail.length*.7})`;ctx.beginPath();ctx.arc(t.x,t.y,1.4,0,Math.PI*2);ctx.fill()}if(p.y<=p.ty){makeBurst(p.x,p.y,.8+Math.random()*.35);rockets.splice(r,1)}}
+ for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.988;p.vy=p.vy*.99+.042;p.life--;ctx.globalAlpha=Math.max(0,p.life/p.max);ctx.fillStyle=p.c;ctx.shadowColor=p.c;ctx.shadowBlur=11;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();if(p.life<=0)particles.splice(i,1)}
+ ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';if((particles.length||rockets.length||Date.now()<until)&&!document.hidden){raf=requestAnimationFrame(draw)}else{raf=0;ctx.clearRect(0,0,W,H)}}
+function fireworkShow(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;until=Date.now()+5200;let i=0;const delays=[0,280,570,870,1140,1600,2040,2480,2920,3570,4210];delays.forEach(ms=>setTimeout(()=>{if(document.hidden)return;launch(W*(.14+Math.random()*.72));if(!raf)raf=requestAnimationFrame(draw)},ms));if(!raf)raf=requestAnimationFrame(draw)}
+setTimeout(()=>{if(!document.hidden&&!matchMedia('(prefers-reduced-motion: reduce)').matches){makeBurst(W*.18,H*.20,.47);makeBurst(W*.82,H*.24,.47);if(!raf)raf=requestAnimationFrame(draw)}},650);
+function reveal(){if(started)return;started=true;$('intro').classList.add('dismissed');$('flash').classList.remove('burst');void $('flash').offsetWidth;$('flash').classList.add('burst');fireworkShow();setTimeout(()=>$('reveal').classList.add('shown'),390)}
+$('open').addEventListener('click',reveal);$('giftTap').addEventListener('click',reveal);$('replay').addEventListener('click',()=>{started=false;$('reveal').classList.remove('shown');$('intro').classList.remove('dismissed');$('flash').classList.remove('burst');particles=[];rockets=[]});
+// A modest intro on load; fireworks happen when the gift is opened.
+const allowEdit=new URLSearchParams(location.search).has('edit');if(allowEdit){$('editToggle').classList.add('show');$('editToggle').onclick=()=>{$('editPane').classList.add('open');fillFields()};$('editClose').onclick=()=>$('editPane').classList.remove('open')}
+function fillFields(){document.querySelectorAll('[data-key]').forEach(x=>x.value=config[x.dataset.key]??'')}
+function applyEdit(){const next={...config};document.querySelectorAll('[data-key]').forEach(x=>next[x.dataset.key]=x.value.trim());if(!/^https:\/\//i.test(next.siteUrl)||!/^https:\/\//i.test(next.loginUrl)){alert('لینک‌ها باید با https:// شروع شوند.');return false}config=next;render();return true}
+$('savePreview').onclick=()=>{if(applyEdit()){$('editPane').classList.remove('open');started=false;$('reveal').classList.remove('shown');$('intro').classList.remove('dismissed')}};
+$('downloadEdited').onclick=()=>{if(!applyEdit())return;const clone=document.documentElement.cloneNode(true);clone.querySelector('#intro').classList.remove('dismissed');clone.querySelector('#reveal').classList.remove('shown');clone.querySelector('#flash').classList.remove('burst');clone.querySelector('#editPane').classList.remove('open');clone.querySelector('#stars').replaceChildren();const initial=clone.querySelector('#initial-config');initial.textContent=JSON.stringify(config).replace(/</g,'\\u003c');const source='<!doctype html>\n'+clone.outerHTML;const blob=new Blob([source],{type:'text/html;charset=utf-8'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='surprise.html';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+})();
+</script>
+</body>
+</html>

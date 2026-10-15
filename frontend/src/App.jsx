@@ -54,6 +54,7 @@ import NotificationsAdminPage from "./pages/admin/NotificationsAdminPage";
 import SupportAdminPage from "./pages/admin/SupportAdminPage";
 import ReportsAdminPage from "./pages/admin/ReportsAdminPage";
 import SettingsAdminPage from "./pages/admin/SettingsAdminPage";
+import BrandAssetsAdminPage from "./pages/admin/BrandAssetsAdminPage";
 
 function NotFound() {
   return (
@@ -290,6 +291,11 @@ export default function App() {
               <Route
                 path="seo"
                 element={<SettingsAdminPage />}
+              />
+
+              <Route
+                path="assets"
+                element={<BrandAssetsAdminPage />}
               />
 
               <Route

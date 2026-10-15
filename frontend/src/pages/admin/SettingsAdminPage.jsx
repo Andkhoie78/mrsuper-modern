@@ -1,23 +1,105 @@
-import {useEffect,useState} from 'react';import {api,asset,csrf,messageFrom} from '../../api/client';import {useSite} from '../../context/SiteContext';const fields=[['site_name','Website Name'],['site_description','Website Description'],['contact_email','Contact Email'],['contact_phone','Phone Number'],['contact_address','Address'],['copyright_text','Copyright Text'],['login_button_text','Login Button Text'],['register_button_text','Register Button Text'],['facebook_url','Facebook URL'],['instagram_url','Instagram URL'],['youtube_url','YouTube URL'],['seo_title','Default SEO Title'],['seo_description','Meta Description'],['seo_keywords','Meta Keywords']];const textSettingKeys=new Set(fields.map(([key])=>key));
-export default function SettingsAdminPage(){const[f,setF]=useState({});const[assets,setAssets]=useState({logo_path:null,favicon_path:null,hesabpay_qr_path:null});const[msg,setMsg]=useState('');const[err,setErr]=useState('');const[uploading,setUploading]=useState('');const{refresh}=useSite();useEffect(()=>{api.get('/admin/cms/settings').then(r=>{const o={};r.data.forEach(x=>{const value=x.value;const invalid=textSettingKeys.has(x.key)&&value!=null&&typeof value!=='string'&&typeof value!=='number';o[x.key]=invalid?'':(value??'')});setF(o)})},[]);// MR_SUPER_LOGO_UPLOAD_FIX_V1: surface invalid selections/errors and show upload progress.
-const uploadAsset=async(key)=>{
-  const file=assets[key];
-  setErr('');setMsg('');
-  if(!file){setErr('Please select an image file before clicking Upload.');return}
-  if(!['image/jpeg','image/png','image/webp'].includes(file.type)){
-    setErr('Unsupported image. Choose a PNG, JPG or WebP file (SVG is not supported).');return;
+// MR_SUPER_INDEPENDENT_ASSETS_V1: SEO settings save only text and visibility fields; never overwrite asset keys.
+import {useEffect, useState} from 'react';
+import {Link} from 'react-router-dom';
+import {api, csrf, messageFrom} from '../../api/client';
+import {useSite} from '../../context/SiteContext';
+
+const fields = [
+  ['site_name', 'Website Name'],
+  ['site_description', 'Website Description'],
+  ['contact_email', 'Contact Email'],
+  ['contact_phone', 'Phone Number'],
+  ['contact_address', 'Address'],
+  ['copyright_text', 'Copyright Text'],
+  ['login_button_text', 'Login Button Text'],
+  ['register_button_text', 'Register Button Text'],
+  ['facebook_url', 'Facebook URL'],
+  ['instagram_url', 'Instagram URL'],
+  ['youtube_url', 'YouTube URL'],
+  ['seo_title', 'Default SEO Title'],
+  ['seo_description', 'Meta Description'],
+  ['seo_keywords', 'Meta Keywords'],
+];
+const visible = value => value !== false && value !== 0 && value !== '0' && value !== 'false';
+const text = value => typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+
+export default function SettingsAdminPage() {
+  const [form, setForm] = useState({show_login_button: true, show_register_button: true});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const {refresh} = useSite();
+
+  useEffect(() => {
+    let mounted = true;
+    api.get('/admin/cms/settings').then(({data}) => {
+      if (!mounted) return;
+      const values = Object.fromEntries(data.map(item => [item.key, item.value]));
+      const next = {};
+      for (const [key] of fields) next[key] = text(values[key]);
+      next.show_login_button = visible(values.show_login_button);
+      next.show_register_button = visible(values.show_register_button);
+      setForm(next);
+    }).catch(err => {
+      if (mounted) setError(messageFrom(err));
+    }).finally(() => {if (mounted) setLoading(false)});
+    return () => {mounted = false};
+  }, []);
+
+  async function save(event) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    setSaving(true);
+    try {
+      // Important: these are the ONLY settings allowed through the SEO form.
+      // logo_path, favicon_path and hesabpay_qr_path have independent upload controls.
+      const settings = {};
+      for (const [key] of fields) settings[key] = text(form[key]);
+      settings.show_login_button = Boolean(form.show_login_button);
+      settings.show_register_button = Boolean(form.show_register_button);
+      await csrf();
+      await api.put('/admin/cms/settings', {settings, group: 'general'});
+      const {data} = await api.get('/admin/cms/settings');
+      const stored = Object.fromEntries(data.map(item => [item.key, item.value]));
+      const confirmed = Object.entries(settings).every(([key, value]) =>
+        stored[key] === value || String(stored[key]) === String(value)
+      );
+      if (!confirmed) throw new Error('Some changes were not confirmed in the database. Please retry or check the server logs.');
+      setMessage('Settings saved and verified. The logo, favicon and payment QR were not changed.');
+      // Public config refresh is helpful, but not a reason to misreport a saved DB write.
+      refresh().catch(() => {});
+    } catch (err) {
+      setError(messageFrom(err));
+    } finally {
+      setSaving(false);
+    }
   }
-  if(file.size>8*1024*1024){setErr('Image is larger than 8 MB. Choose a smaller file.');return}
-  setUploading(key);
-  try{
-    await csrf();
-    const fd=new FormData();fd.append('key',key);fd.append('file',file,file.name);
-    const response=await api.post('/admin/cms/settings/assets',fd);
-    const uploadedPath=response?.data?.path;
-    if(typeof uploadedPath!=='string'||!uploadedPath.trim())throw new Error('Upload returned no image path.');
-    setF(current=>({...current,[key]:uploadedPath}));
-    setMsg(key==='logo_path'?'Logo uploaded successfully.':key==='favicon_path'?'Favicon uploaded successfully.':'Image uploaded successfully.');
-    await refresh();
-  }catch(e){setErr(messageFrom(e))}
-  finally{setUploading('')}
-};const save=async e=>{e.preventDefault();setErr('');try{await csrf();await api.put('/admin/cms/settings',{settings:f,group:'general'});setMsg('Website and SEO settings saved.');await refresh()}catch(e){setErr(messageFrom(e))}};return <><div><h1 className="text-2xl font-black">SEO & Website Settings</h1><p className="mt-1 muted">Manage site identity, contacts, social links, default metadata, and search-engine settings.</p></div><form className="card mt-6 grid max-w-3xl gap-4 p-6 md:grid-cols-2" onSubmit={save}><div className="md:col-span-2 flex flex-wrap gap-5 rounded-xl bg-slate-50 p-4"><label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={f.show_login_button!==false} onChange={e=>setF({...f,show_login_button:e.target.checked})}/>Show Login Button</label><label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={f.show_register_button!==false} onChange={e=>setF({...f,show_register_button:e.target.checked})}/>Show Register Button</label></div>{fields.map(([k,l])=><label key={k} className={k.includes('description')?'md:col-span-2':''}><span className="label">{l}</span>{k.includes('description')?<textarea className="input min-h-24" value={f[k]??''} onChange={e=>setF({...f,[k]:e.target.value})}/>:<input className="input" value={f[k]??''} onChange={e=>setF({...f,[k]:e.target.value})}/>}</label>)}{err&&<p className="md:col-span-2 text-sm text-red-600">{err}</p>}{msg&&<p className="md:col-span-2 text-sm text-green-600">{msg}</p>}<div className="md:col-span-2 grid gap-4 rounded-xl bg-slate-50 p-4 md:grid-cols-2"><div className="min-w-0"><span className="label">Website Logo</span>{typeof f.logo_path==='string'&&f.logo_path&&<img src={asset(f.logo_path)} alt="Current website logo" className="my-2 h-16 w-16 rounded-lg border bg-white object-contain"/>}<input aria-label="Choose website logo" type="file" accept="image/png,image/jpeg,image/webp" className="input" onChange={e=>{setErr('');setAssets(current=>({...current,logo_path:e.target.files?.[0]||null}))}}/>{assets.logo_path&&<p className="mt-2 break-all text-xs text-slate-600">Selected: {assets.logo_path.name}</p>}<button type="button" disabled={!!uploading||!assets.logo_path} className="btn-secondary mt-2 disabled:cursor-not-allowed disabled:opacity-50" onClick={()=>uploadAsset('logo_path')}>{uploading==='logo_path'?'Uploading Logo...':'Upload Logo'}</button>{(err||msg)&&<p role="status" className={err?'mt-2 text-sm text-red-600':'mt-2 text-sm text-green-700'}>{err||msg}</p>}</div><div className="min-w-0"><span className="label">Favicon</span>{typeof f.favicon_path==='string'&&f.favicon_path&&<img src={asset(f.favicon_path)} alt="Current favicon" className="my-2 h-12 w-12 rounded-lg border bg-white object-contain"/>}<input aria-label="Choose favicon" type="file" accept="image/png,image/jpeg,image/webp" className="input" onChange={e=>{setErr('');setAssets(current=>({...current,favicon_path:e.target.files?.[0]||null}))}}/>{assets.favicon_path&&<p className="mt-2 break-all text-xs text-slate-600">Selected: {assets.favicon_path.name}</p>}<button type="button" disabled={!!uploading||!assets.favicon_path} className="btn-secondary mt-2 disabled:cursor-not-allowed disabled:opacity-50" onClick={()=>uploadAsset('favicon_path')}>{uploading==='favicon_path'?'Uploading Favicon...':'Upload Favicon'}</button></div><label className="md:col-span-2"><span className="label">Official HesabPay Receiving QR</span><p className="mb-2 text-sm muted">Upload the genuine receiving QR from your own HesabPay account. This image will be visible to paying students. JPG or PNG recommended.</p>{f.hesabpay_qr_path&&<img src={asset(f.hesabpay_qr_path)} alt="HesabPay QR" className="mb-3 h-48 w-48 rounded-lg bg-white object-contain p-2"/>}<input type="file" accept="image/png,image/jpeg,image/webp" className="input" onChange={e=>setAssets({...assets,hesabpay_qr_path:e.target.files?.[0]||null})}/><button type="button" className="btn-secondary mt-2" onClick={()=>uploadAsset('hesabpay_qr_path')}>Upload HesabPay QR</button></label></div><button className="btn-primary md:col-span-2">Save Settings</button></form></>}
+
+  return <>
+    <h1 className="text-2xl font-black">SEO & Website Settings</h1>
+    <p className="mt-1 muted">Edit your website name, contact details and SEO information here.</p>
+    <p className="mt-3 text-sm">
+      Logo, Favicon and HesabPay receiving QR are managed separately in{' '}
+      <Link to="/admin/assets" className="font-bold text-blue-700 underline">Logo, Favicon & QR</Link>.
+    </p>
+    <form className="card mt-6 grid max-w-3xl gap-4 p-6 md:grid-cols-2" onSubmit={save}>
+      <div className="md:col-span-2 flex flex-wrap gap-5 rounded-xl bg-slate-50 p-4">
+        <label className="flex items-center gap-2 font-semibold"><input type="checkbox" disabled={loading || saving} checked={Boolean(form.show_login_button)} onChange={e => setForm(current => ({...current, show_login_button: e.target.checked}))}/>Show Login Button</label>
+        <label className="flex items-center gap-2 font-semibold"><input type="checkbox" disabled={loading || saving} checked={Boolean(form.show_register_button)} onChange={e => setForm(current => ({...current, show_register_button: e.target.checked}))}/>Show Register Button</label>
+      </div>
+      {fields.map(([key, label]) => <label key={key} className={key.includes('description') ? 'md:col-span-2' : ''}>
+        <span className="label">{label}</span>
+        {key.includes('description')
+          ? <textarea className="input min-h-24" disabled={loading || saving} value={form[key] ?? ''} onChange={e => setForm(current => ({...current, [key]: e.target.value}))}/>
+          : <input className="input" disabled={loading || saving} value={form[key] ?? ''} onChange={e => setForm(current => ({...current, [key]: e.target.value}))}/>}
+      </label>)}
+      {error && <p role="alert" className="md:col-span-2 text-sm text-red-600">{error}</p>}
+      {message && <p role="status" className="md:col-span-2 text-sm text-green-700">{message}</p>}
+      <button type="submit" disabled={loading || saving} className="btn-primary md:col-span-2 disabled:opacity-50">
+        {loading ? 'Loading settings...' : saving ? 'Saving...' : 'Save Settings'}
+      </button>
+    </form>
+  </>;
+}

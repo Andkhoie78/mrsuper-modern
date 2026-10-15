@@ -5,7 +5,7 @@ import {decorateCourses,decorateVideos} from './public.js';
 import {join} from 'node:path';
 import {createReadStream} from 'node:fs';
 import {stat} from 'node:fs/promises';
-const json=(v)=>{try{return typeof v==='string'?JSON.parse(v):v}catch{return{}}};
+const json=(v)=>{try{return typeof v==='string'?JSON.parse(v):v}catch{return v}};
 const cols={categories:{image:'image_path',dir:'categories'},instructors:{photo:'photo_path',dir:'instructors'},courses:{thumbnail:'thumbnail_path',dir:'courses'},videos:{thumbnail:'thumbnail_path',video:'video_path',dir:'videos'},banners:{image:'image_path',video:'video_path',dir:'banners'},short_videos:{thumbnail:'thumbnail_path',video:'video_path',dir:'short-videos'}};
 const videoMime=['video/mp4','video/webm'];
 const photos=['image/jpeg','image/png','image/webp'];

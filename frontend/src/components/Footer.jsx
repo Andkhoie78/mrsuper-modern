@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
-import { BookOpen } from "lucide-react";
 import { useSite } from "../context/SiteContext";
-
+import BrandLogo from "./BrandLogo";
 function FacebookIcon() {
   return (
     <svg
@@ -68,7 +67,7 @@ export default function Footer() {
             className="flex items-center gap-2 text-lg font-black"
             style={{ color: "var(--footer-heading)" }}
           >
-            <BookOpen />
+            <BrandLogo sizeClassName="h-7 w-7" />
 
             {settings.site_name || "MrSuper"}
           </div>

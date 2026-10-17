@@ -13,7 +13,7 @@ function extras(table,b){const x={...b};for(const [k,v] of Object.entries(b)){co
 async function prepareRecord(table,body,editing=false){const b=extras(table,body),d=prepared(table,b,editing);if(['courses','videos'].includes(table))delete d.published_at;if(['courses','videos','categories'].includes(table)){const name=b.title_en||b.name_en;if(!editing||Object.hasOwn(b,'slug'))d.slug=b.slug?slug(b.slug):slug(name)}if(['courses','videos'].includes(table)&&bool(b.is_free))d.price=0;if(['courses','videos'].includes(table)&&b.status==='published'&&!editing)d.published_at=new Date();if(table==='courses'&&b.join_url&&!/^https:\/\/(t\.me|telegram\.me)\//i.test(b.join_url))throw http(422,'Join link must be an HTTPS Telegram link.');if(table==='courses'&&bool(b.join_enabled)&&b.status==='published'&&!b.join_url)throw http(422,'Set the Telegram Join URL before publishing a join-enabled course.');const files=cols[table];if(files)for(const [f,column] of Object.entries(files)){if(['dir'].includes(f))continue;if(b[f]&&typeof b[f].toBuffer==='function'){const isVideo=f==='video';const max=isVideo?60*1024*1024:8*1024*1024;const path=await saveUpload(b[f],isVideo&&table==='videos'?'private/videos':`public/${files.dir}`,max,isVideo?videoMime:photos);d[column]=path;if(table==='videos'&&isVideo){d.mime_type=b[f].mimetype;d.file_size=b[f].file?.bytesRead||0}}}return d}
 async function genericIndex(table,req){const r=req.query||{},w=[],p=[];if(r.q&&table!=='bank_accounts'){const field=table==='navigation_items'?'label_en':table==='homepage_sections'?'title_en':table==='categories'?'name_en':'title_en';if(fields[table]?.includes(field)){w.push(`\`${field}\` LIKE ?`);p.push('%'+String(r.q).slice(0,100)+'%')}}const order=fields[table]?.includes('display_order')?'display_order ASC, id DESC':'id DESC';const result=await page(`SELECT * FROM ${table} ${w.length?'WHERE '+w.join(' AND '):''} ORDER BY ${order}`,p,req,50);if(table==='categories'&&result.data.length){const ids=result.data.map(x=>x.id),place=ids.map(()=>'?').join(',');const [ca,vi]=await Promise.all([q(`SELECT category_id, COUNT(*) n FROM courses WHERE category_id IN (${place}) GROUP BY category_id`,ids),q(`SELECT category_id, COUNT(*) n FROM videos WHERE category_id IN (${place}) GROUP BY category_id`,ids)]);const mc=new Map(ca.map(x=>[Number(x.category_id),x.n])),mv=new Map(vi.map(x=>[Number(x.category_id),x.n]));for(const x of result.data){x.courses_count=mc.get(Number(x.id))||0;x.videos_count=mv.get(Number(x.id))||0}}
  if(table==='courses'){result.data=await decorateCourses(result.data,{is_admin:true});if(result.data.length){const ids=result.data.map(x=>x.id);const v=await q(`SELECT course_id,COUNT(*) n FROM videos WHERE course_id IN (${ids.map(()=>'?').join(',')}) GROUP BY course_id`,ids);const vm=new Map(v.map(x=>[Number(x.course_id),x.n]));for(const x of result.data)x.videos_count=vm.get(Number(x.id))||0}}
- if(table==='videos')result.data=await decorateVideos(result.data);if(table==='banners')result.data=result.data.map(x=>({...x,style:json(x.style)}));if(table==='homepage_sections')result.data=result.data.map(x=>({...x,content:json(x.content),style:json(x.style)}));return result}
+ if(table==='videos'){const raw=result.data.map(v=>({...v,has_video:Boolean(v.video_path)}));result.data=await decorateVideos(raw);const ids=[...new Set(result.data.map(v=>v.course_id).filter(Boolean))];if(ids.length){const names=await q(`SELECT id,title_en FROM courses WHERE id IN (${ids.map(()=>'?').join(',')})`,ids);const byId=new Map(names.map(c=>[Number(c.id),c]));result.data=result.data.map(v=>({...v,course:byId.get(Number(v.course_id))||null}));}}if(table==='banners')result.data=result.data.map(x=>({...x,style:json(x.style)}));if(table==='homepage_sections')result.data=result.data.map(x=>({...x,content:json(x.content),style:json(x.style)}));return result}
 const requireRow=async(table,id)=>{const row=await one(`SELECT * FROM ${table} WHERE id=?`,[safeInt(id)]);if(!row)throw http(404,'Not found.');return row};
 async function editRecord(table,req,reply,method){await requireAdmin(req);const id=req.params.id?Number(req.params.id):null;if(method==='delete'){await requireRow(table,id);if(['courses','videos'].includes(table)){const cnt=await one('SELECT COUNT(*) n FROM payments WHERE content_type=? AND content_id=?',[table==='courses'?'course':'video',id]);if(cnt.n)throw http(409,'Payment history exists. Unpublish this content instead.')}if(table==='bank_accounts'&&(await one('SELECT COUNT(*) n FROM payments WHERE bank_account_id=?',[id])).n)throw http(409,'Account has payment history. Disable it instead.');if(table==='categories'&&((await one('SELECT COUNT(*) n FROM courses WHERE category_id=?',[id])).n||(await one('SELECT COUNT(*) n FROM videos WHERE category_id=?',[id])).n))throw http(409,'Category in use. Disable it instead.');await q(`DELETE FROM ${table} WHERE id=?`,[id]);clearCache();return reply.code(204).send()}
  const b=req.body||{};if(['categories','courses','instructors','videos','bank_accounts'].includes(table)){if(!id&&table==='bank_accounts')requireFields(b,['bank_name','account_holder_name','account_number']);if(!id&&table==='categories')requireFields(b,['name_en']);if(!id&&table==='courses')requireFields(b,['category_id','title_en','price','currency']);if(!id&&table==='videos')requireFields(b,['title_en','video'])}
@@ -34,6 +34,48 @@ async function enrichPayments(payments){
 async function paymentDetails(p){return (await enrichPayments(p?[p]:[]))[0]||null}
 export function adminRoutes(app){
  for(const [table,prefix] of Object.entries({categories:'/api/admin/categories',instructors:'/api/admin/instructors',courses:'/api/admin/courses',videos:'/api/admin/videos',bank_accounts:'/api/admin/bank-accounts',banners:'/api/admin/cms/banners',homepage_sections:'/api/admin/cms/sections',short_videos:'/api/admin/cms/short-videos',navigation_items:'/api/admin/cms/navigation'}))createCrud(app,table,prefix);
+  // MRSUPER_VIDEO_ADMIN_FIX_V1: private, authenticated streaming for Admin review (including drafts).
+  app.get('/api/admin/videos/:id',async(req)=>{
+    await requireAdmin(req);
+    const v=await requireRow('videos',req.params.id);
+    const {video_path,...safe}=v;
+    return {...safe,has_video:Boolean(video_path)};
+  });
+  app.get('/api/admin/videos/:id/preview',async(req,reply)=>{
+    await requireAdmin(req);
+    const v=await requireRow('videos',req.params.id);
+    const raw=String(v.video_path||'');
+    if(!/^[a-zA-Z0-9_./-]+$/.test(raw)||raw.includes('..')||raw.startsWith('/'))throw http(404,'Video unavailable.');
+    const key=raw.startsWith('private/videos/')?raw:`private/videos/${raw}`;
+    if(!/^private\/videos\/[a-zA-Z0-9_-]+\.(mp4|webm)$/.test(key))throw http(404,'Video unavailable.');
+    const range=req.headers.range;
+    if(range&&!/^bytes=\d+-\d*$/.test(range))throw http(416,'Invalid byte range.');
+    reply.header('Accept-Ranges','bytes')
+      .header('Content-Type',key.endsWith('.webm')?'video/webm':'video/mp4')
+      .header('Cache-Control','private,no-store')
+      .header('X-Content-Type-Options','nosniff');
+    if(r2Enabled){
+      const item=await getR2('private',key,range);
+      if(!item)throw http(404,'Video unavailable.');
+      reply.code(item.ContentRange?206:200);
+      if(item.ContentRange)reply.header('Content-Range',item.ContentRange);
+      if(item.ContentLength!=null)reply.header('Content-Length',item.ContentLength);
+      return reply.send(item.Body);
+    }
+    const file=join(mediaRoot,key);
+    const info=await stat(file).catch(()=>null);
+    if(!info)throw http(404,'Video unavailable.');
+    let start=0,end=info.size-1;
+    if(range){
+      const match=/^bytes=(\d+)-(\d*)$/.exec(range);
+      start=Number(match[1]);
+      end=match[2]?Math.min(Number(match[2]),end):end;
+      if(start>end||start>=info.size)throw http(416,'Invalid range.');
+      reply.code(206).header('Content-Range',`bytes ${start}-${end}/${info.size}`);
+    }
+    reply.header('Content-Length',end-start+1);
+    return reply.send(createReadStream(file,{start,end}));
+  });
  app.get('/api/admin/courses/:id',async(req)=>{await requireAdmin(req);const c=await requireRow('courses',req.params.id);const [x]=await decorateCourses([c],{is_admin:true});const sections=await q('SELECT * FROM course_sections WHERE course_id=? ORDER BY display_order',[c.id]);return{...x,sections:await Promise.all(sections.map(async s=>({...s,videos:await q('SELECT * FROM videos WHERE course_section_id=? ORDER BY display_order',[s.id])})))}});
  app.post('/api/admin/courses/:id/sections',async(req,reply)=>{await requireAdmin(req);await requireRow('courses',req.params.id);requireFields(req.body||{},['title_en']);const id=await insert('course_sections',{course_id:Number(req.params.id),title_en:String(req.body.title_en).slice(0,180),title_fa:req.body.title_fa||null,display_order:Number(req.body.display_order||0)});return reply.code(201).send(await requireRow('course_sections',id))});
  app.put('/api/admin/courses/:id/sections/:section',async(req)=>{await requireAdmin(req);const s=await requireRow('course_sections',req.params.section);if(s.course_id!==Number(req.params.id))throw http(404,'Section not found.');await update('course_sections',s.id,{title_en:req.body.title_en,title_fa:req.body.title_fa,display_order:Number(req.body.display_order||0)});return requireRow('course_sections',s.id)});

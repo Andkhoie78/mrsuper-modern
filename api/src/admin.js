@@ -1,3 +1,4 @@
+// MRSUPER_TELEGRAM_OPTIONAL_V2: Telegram URL is optional for promotional videos.
 // MRSUPER_FREE_VIDEO_GALLERY_V1
 import {r2Enabled,getR2} from './r2-storage.js';
 import {q,one,insert,update,page,http,requireFields,safeInt,str,bool,slug,prepared,fields,saveUpload,clearCache,pool,notify,cleanUser,mediaRoot} from './core.js';
@@ -116,7 +117,7 @@ export function adminRoutes(app){
     const existing=editing?await publicVideoRow(req.params.id):null;
     const body=req.body||{};
     const status='published';
-    const url=cleanFullVideoUrl(body.full_video_url,{required:true});
+    const url=cleanFullVideoUrl(body.full_video_url);
     const clean=Object.fromEntries(showcaseFields.filter(k=>Object.hasOwn(body,k)).map(k=>[k,body[k]]));
     // Published public promotions only. Course lessons and paid videos remain separate.
     const payload={...clean,course_id:'',course_section_id:'',price:'0',currency:'AFN',is_free:'1',is_preview:'0',status};
@@ -133,8 +134,8 @@ export function adminRoutes(app){
       await conn.beginTransaction();
       if(existing)await update('videos',id,data,conn);
       else id=await insert('videos',data,conn);
-      if(url)await conn.execute('INSERT INTO showcase_video_links(video_id,full_video_url) VALUES(?,?) ON DUPLICATE KEY UPDATE full_video_url=VALUES(full_video_url),updated_at=NOW()',[id,url]);
-      else await conn.execute('DELETE FROM showcase_video_links WHERE video_id=?',[id]);
+      // Keep a showcase membership row even when the optional Telegram link is empty.
+      await conn.execute('INSERT INTO showcase_video_links(video_id,full_video_url) VALUES(?,?) ON DUPLICATE KEY UPDATE full_video_url=VALUES(full_video_url),updated_at=NOW()',[id,url]);
       await conn.commit();
     }catch(err){await conn.rollback();throw err}finally{conn.release()}
     clearCache();
@@ -195,7 +196,7 @@ export function adminRoutes(app){
  app.delete('/api/admin/users/:id/entitlements/:ent',async(req,reply)=>{await requireAdmin(req);await q('DELETE FROM entitlements WHERE id=? AND user_id=?',[safeInt(req.params.ent),safeInt(req.params.id)]);return reply.code(204).send()});
  app.get('/api/admin/cms/settings',async(req)=>{await requireAdmin(req);const rows=await q('SELECT * FROM website_settings ORDER BY `group`,`key`');return rows.map(x=>({...x,value:json(x.value)}))});
  app.put('/api/admin/cms/settings',async(req)=>{await requireAdmin(req);const obj=req.body?.settings;if(!obj||typeof obj!=='object')throw http(422,'Missing settings.');for(const [key,value] of Object.entries(obj)){if(!/^[a-z_]{2,80}$/.test(key))throw http(422,'Invalid setting key.');await q('INSERT INTO website_settings(`key`,`value`,`group`,created_at,updated_at) VALUES(?,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`),updated_at=NOW()',[key,JSON.stringify(value),req.body.group||'general'])}clearCache();return{message:'Settings saved.'}});
- app.post('/api/admin/cms/settings/assets',async(req)=>{await requireAdmin(req);const key=req.body?.key;if(!['logo_path','favicon_path','hesabpay_qr_path'].includes(key))throw http(422,'Invalid asset key.');const path=await saveUpload(req.body.file,key==='hesabpay_qr_path'?'public/hesabpay':'public/site-assets');await q("INSERT INTO website_settings(`key`,`value`,`group`,created_at,updated_at) VALUES(?,?, 'general', NOW(),NOW()) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",[key,JSON.stringify(path)]);clearCache();return{message:'Site asset updated.',path}});
+ app.post('/api/admin/cms/settings/assets',async(req)=>{await requireAdmin(req);const key=req.body?.key;if(!['logo_path','favicon_path','hesabpay_qr_path','about_founder_photo_path','about_academy_photo_path'].includes(key))throw http(422,'Invalid asset key.');const path=await saveUpload(req.body.file,key==='hesabpay_qr_path'?'public/hesabpay':'public/site-assets');await q("INSERT INTO website_settings(`key`,`value`,`group`,created_at,updated_at) VALUES(?,?, 'general', NOW(),NOW()) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",[key,JSON.stringify(path)]);clearCache();return{message:'Site asset updated.',path}});
  app.get('/api/admin/cms/theme',async(req)=>{await requireAdmin(req);return q('SELECT * FROM theme_settings ORDER BY scope,`key`')});
  app.put('/api/admin/cms/theme',async(req)=>{await requireAdmin(req);const b=req.body||{};if(!b.settings||typeof b.settings!=='object')throw http(422,'Invalid theme.');for(const [key,value] of Object.entries(b.settings)){if(!/^[a-z_]{1,100}$/.test(key))throw http(422,'Invalid theme key.');await q('INSERT INTO theme_settings(scope,`key`,`value`,created_at,updated_at) VALUES(?,?,?,NOW(),NOW()) ON DUPLICATE KEY UPDATE value=VALUES(value),updated_at=NOW()',[b.scope||'global',key,String(value)])}clearCache();return{message:'Theme settings saved.'}});
  app.post('/api/admin/cms/theme/reset',async(req)=>{await requireAdmin(req);await q('DELETE FROM theme_settings');clearCache();return{message:'Theme reset to defaults.'}});

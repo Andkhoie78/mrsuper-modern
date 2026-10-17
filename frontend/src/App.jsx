@@ -50,6 +50,7 @@ import PublicVideosAdminPage from "./pages/admin/PublicVideosAdminPage";
 import PaymentsAdminPage from "./pages/admin/PaymentsAdminPage";
 import BankAccountsAdminPage from "./pages/admin/BankAccountsAdminPage";
 import HomepageAdminPage from "./pages/admin/HomepageAdminPage";
+import AboutAdminPage from "./pages/admin/AboutAdminPage";
 import NavigationAdminPage from "./pages/admin/NavigationAdminPage";
 import ThemeAdminPage from "./pages/admin/ThemeAdminPage";
 import NotificationsAdminPage from "./pages/admin/NotificationsAdminPage";
@@ -274,6 +275,7 @@ export default function App() {
                 path="homepage"
                 element={<HomepageAdminPage />}
               />
+              <Route path="about-manager" element={<AboutAdminPage />} />
 
               <Route
                 path="navigation"

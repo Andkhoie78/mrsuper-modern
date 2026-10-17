@@ -1,6 +1,8 @@
+// MRSUPER_FREE_VIDEO_GALLERY_V1
 import {r2Enabled,getR2} from './r2-storage.js';
 import {q,one,insert,update,page,http,requireFields,safeInt,str,bool,slug,prepared,fields,saveUpload,clearCache,pool,notify,cleanUser,mediaRoot} from './core.js';
 import {requireAdmin} from './auth.js';
+import {ensureShowcaseLinks,cleanFullVideoUrl,readShowcaseLink} from './showcase-links.js';
 import {decorateCourses,decorateVideos} from './public.js';
 import {join} from 'node:path';
 import {createReadStream} from 'node:fs';
@@ -76,6 +78,87 @@ export function adminRoutes(app){
     reply.header('Content-Length',end-start+1);
     return reply.send(createReadStream(file,{start,end}));
   });
+
+  // MRSUPER_TELEGRAM_PROMOS_V1: short promotional clip + Telegram full-video link.
+  // Paid course lessons and past customer entitlements stay in their existing routes.
+  const showcaseFields=['title_en','title_fa','description_en','description_fa','video','thumbnail'];
+  const safeVideo=(v)=>{const {video_path,...safe}=v;return {...safe,has_video:Boolean(video_path)}};
+  const publicVideoRow=async(id)=>{
+    const v=await requireRow('videos',id);
+    if(v.course_id!=null || !bool(v.is_free))throw http(404,'Free video not found.');
+    return v;
+  };
+  app.get('/api/admin/showcase-videos',async(req)=>{
+    await requireAdmin(req);await ensureShowcaseLinks();
+    const result=await page('SELECT * FROM videos WHERE course_id IS NULL AND is_free=1 ORDER BY display_order ASC,id DESC',[],req,50);
+    const ids=result.data.map(v=>Number(v.id));
+    const linkRows=ids.length?await q(`SELECT video_id,full_video_url FROM showcase_video_links WHERE video_id IN (${ids.map(()=>'?').join(',')})`,ids):[];
+    const links=new Map(linkRows.map(r=>[Number(r.video_id),r.full_video_url]));
+    return {...result,data:await decorateVideos(result.data.map(v=>({...safeVideo(v),full_video_url:links.get(Number(v.id))||''})))};
+  });
+  app.get('/api/admin/course-lessons',async(req)=>{
+    await requireAdmin(req);
+    const id=req.query?.course_id ? safeInt(req.query.course_id):null;
+    const result=await page(`SELECT * FROM videos WHERE course_id IS NOT NULL ${id?'AND course_id=?':''} ORDER BY display_order ASC,id DESC`,id?[id]:[],req,50);
+    const ids=[...new Set(result.data.map(v=>v.course_id).filter(Boolean))];
+    const linked=ids.length?await q(`SELECT id,title_en FROM courses WHERE id IN (${ids.map(()=>'?').join(',')})`,ids):[];
+    const byId=new Map(linked.map(c=>[Number(c.id),c]));
+    return {...result,data:(await decorateVideos(result.data.map(safeVideo))).map(v=>({...v,course:byId.get(Number(v.course_id))||null}))};
+  });
+  app.get('/api/admin/showcase-videos/:id',async(req)=>{
+    await requireAdmin(req);
+    const saved=await publicVideoRow(req.params.id);
+    return {...safeVideo(saved),full_video_url:await readShowcaseLink(saved.id)};
+  });
+  const saveShowcase=async(req,reply,editing)=>{
+    await requireAdmin(req);
+    await ensureShowcaseLinks();
+    const existing=editing?await publicVideoRow(req.params.id):null;
+    const body=req.body||{};
+    const status='published';
+    const url=cleanFullVideoUrl(body.full_video_url,{required:true});
+    const clean=Object.fromEntries(showcaseFields.filter(k=>Object.hasOwn(body,k)).map(k=>[k,body[k]]));
+    // Published public promotions only. Course lessons and paid videos remain separate.
+    const payload={...clean,course_id:'',course_section_id:'',price:'0',currency:'AFN',is_free:'1',is_preview:'0',status};
+    if(!editing){requireFields(payload,['title_en','video']);}
+    if(!String(payload.title_en||existing?.title_en||'').trim())throw http(422,'English title is required.');
+    const data=await prepareRecord('videos',payload,Boolean(existing));
+    if(!existing && !data.video_path)throw http(422,'A short preview video is required.');
+    if(!existing){data.video_path=data.video_path||'';data.mime_type=data.mime_type||'video/mp4';}
+    if(existing && status==='published'&&!existing.published_at)data.published_at=new Date();
+    // Video/thumbnail bytes are uploaded by prepareRecord, but the DB rows + URL are atomic.
+    const conn=await pool.getConnection();
+    let id=existing?.id;
+    try{
+      await conn.beginTransaction();
+      if(existing)await update('videos',id,data,conn);
+      else id=await insert('videos',data,conn);
+      if(url)await conn.execute('INSERT INTO showcase_video_links(video_id,full_video_url) VALUES(?,?) ON DUPLICATE KEY UPDATE full_video_url=VALUES(full_video_url),updated_at=NOW()',[id,url]);
+      else await conn.execute('DELETE FROM showcase_video_links WHERE video_id=?',[id]);
+      await conn.commit();
+    }catch(err){await conn.rollback();throw err}finally{conn.release()}
+    clearCache();
+    return reply.code(existing?200:201).send({...safeVideo(await requireRow('videos',id)),full_video_url:url});
+  };
+  app.post('/api/admin/showcase-videos',async(req,reply)=>saveShowcase(req,reply,false));
+  app.post('/api/admin/showcase-videos/:id',async(req,reply)=>saveShowcase(req,reply,true));
+  app.delete('/api/admin/showcase-videos/:id',async(req,reply)=>{
+    await requireAdmin(req);
+    const row=await publicVideoRow(req.params.id);
+    const payment=await one("SELECT id FROM payments WHERE content_type='video' AND content_id=? LIMIT 1",[row.id]);
+    if(payment)throw http(409,'This video has payment history and cannot be deleted.');
+    await ensureShowcaseLinks();
+    const conn=await pool.getConnection();
+    try{
+      await conn.beginTransaction();
+      await conn.execute('DELETE FROM showcase_video_links WHERE video_id=?',[row.id]);
+      await conn.execute('DELETE FROM videos WHERE id=? AND course_id IS NULL AND is_free=1',[row.id]);
+      await conn.commit();
+    }catch(err){await conn.rollback();throw err}finally{conn.release()}
+    clearCache();
+    return reply.code(204).send();
+  });
+
  app.get('/api/admin/courses/:id',async(req)=>{await requireAdmin(req);const c=await requireRow('courses',req.params.id);const [x]=await decorateCourses([c],{is_admin:true});const sections=await q('SELECT * FROM course_sections WHERE course_id=? ORDER BY display_order',[c.id]);return{...x,sections:await Promise.all(sections.map(async s=>({...s,videos:await q('SELECT * FROM videos WHERE course_section_id=? ORDER BY display_order',[s.id])})))}});
  app.post('/api/admin/courses/:id/sections',async(req,reply)=>{await requireAdmin(req);await requireRow('courses',req.params.id);requireFields(req.body||{},['title_en']);const id=await insert('course_sections',{course_id:Number(req.params.id),title_en:String(req.body.title_en).slice(0,180),title_fa:req.body.title_fa||null,display_order:Number(req.body.display_order||0)});return reply.code(201).send(await requireRow('course_sections',id))});
  app.put('/api/admin/courses/:id/sections/:section',async(req)=>{await requireAdmin(req);const s=await requireRow('course_sections',req.params.section);if(s.course_id!==Number(req.params.id))throw http(404,'Section not found.');await update('course_sections',s.id,{title_en:req.body.title_en,title_fa:req.body.title_fa,display_order:Number(req.body.display_order||0)});return requireRow('course_sections',s.id)});

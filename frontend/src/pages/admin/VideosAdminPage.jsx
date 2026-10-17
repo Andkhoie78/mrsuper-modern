@@ -1,5 +1,6 @@
 // MRSUPER_VIDEO_ADMIN_FIX_V1: secure previews, verified saves, and safe video management.
 import {useEffect, useRef, useState} from 'react';
+import {useSearchParams} from 'react-router-dom';
 import {Pencil, Plus, Trash2, Film, CheckCircle2} from 'lucide-react';
 import {API_ORIGIN, api, asset, csrf, messageFrom} from '../../api/client';
 import Modal from '../../components/Modal';
@@ -68,6 +69,8 @@ function VideoStoredPreview({video, selectedVideo, selectedThumbnail}) {
 }
 
 export default function VideosAdminPage() {
+  const [searchParams] = useSearchParams();
+  const defaultCourseId = searchParams.get('course_id') || '';
   const [data, setData] = useState({data:[]});
   const [categories, setCategories] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -87,13 +90,13 @@ export default function VideosAdminPage() {
   const saveLock = useRef(false);
 
   async function reload() {
-    const r = await api.get('/admin/videos');
+    const r = await api.get('/admin/course-lessons', {params:defaultCourseId?{course_id:defaultCourseId}:{}});
     setData(r.data);
     return r.data;
   }
   useEffect(() => {
     let live = true;
-    Promise.all([api.get('/admin/videos'), api.get('/admin/categories'), api.get('/admin/courses')])
+    Promise.all([api.get('/admin/course-lessons', {params:defaultCourseId?{course_id:defaultCourseId}:{}}), api.get('/admin/categories'), api.get('/admin/courses')])
       .then(([videos, cats, classes]) => {
         if (!live) return;
         setData(videos.data);
@@ -103,7 +106,7 @@ export default function VideosAdminPage() {
       .catch(e => {if (live) setListError(messageFrom(e))})
       .finally(() => {if (live) setLoading(false)});
     return () => {live = false};
-  }, []);
+  }, [defaultCourseId]);
 
   async function fetchSections(courseId) {
     const request = ++sectionRequest.current;
@@ -122,9 +125,10 @@ export default function VideosAdminPage() {
   function addVideo() {
     if (saving || deletingId != null) return;
     setCurrent(null);
-    setForm({...initialForm, category_id: categories[0]?.id || ''});
+    setForm({...initialForm, category_id: categories[0]?.id || '', course_id:defaultCourseId});
     setFormError(''); setNotice(''); setUploadPercent(null);
     setSections([]); ++sectionRequest.current;
+    if(defaultCourseId)fetchSections(defaultCourseId);
     setFormOpen(true);
   }
   async function editVideo(row) {
@@ -167,6 +171,7 @@ export default function VideosAdminPage() {
       saveLock.current = false;
       return;
     }
+    if (!form.course_id) {setFormError('Choose a course before saving a course lesson.');saveLock.current=false;return;}
     if (!form.title_en.trim() || Number(form.price) < 0 || Number(form.duration_seconds) < 0 || Number(form.display_order) < 0) {
       setFormError('Enter a title and non-negative price, duration and display order.');
       saveLock.current = false;
@@ -225,8 +230,8 @@ export default function VideosAdminPage() {
 
   return <>
     <div className="flex items-center justify-between gap-3">
-      <div><h1 className="text-2xl font-black">Videos</h1><p className="mt-1 muted">Upload a standalone video or attach a lesson to a course and section.</p></div>
-      <button className="btn-primary" type="button" onClick={addVideo} disabled={saving || deletingId != null}><Plus size={17}/>Upload Video</button>
+      <div><h1 className="text-2xl font-black">Course Lessons</h1><p className="mt-1 muted">Manage videos inside paid educational courses. Public free videos are managed in Free Videos & Activities.</p></div>
+      <button className="btn-primary" type="button" onClick={addVideo} disabled={saving || deletingId != null}><Plus size={17}/>Add Course Lesson</button>
     </div>
     {notice && <p role="status" className="mt-4 rounded-xl bg-green-50 p-3 text-sm text-green-800"><CheckCircle2 size={16} className="mr-2 inline"/>{notice}</p>}
     {listError && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{listError}</p>}
@@ -251,7 +256,7 @@ export default function VideosAdminPage() {
       <form className="grid gap-4 md:grid-cols-2" onSubmit={save}>
         <fieldset disabled={saving} className="contents">
           <label><span className="label">Category</span><select className="input" value={form.category_id} onChange={e => change('category_id', e.target.value)}><option value="">None</option>{categories.map(x => <option key={x.id} value={x.id}>{x.name_en}</option>)}</select></label>
-          <label><span className="label">Course</span><select className="input" value={form.course_id} onChange={e => {const v=e.target.value;setForm(p => ({...p, course_id:v, course_section_id:''}));fetchSections(v)}}><option value="">Standalone video</option>{courses.map(x => <option key={x.id} value={x.id}>{x.title_en}</option>)}</select></label>
+          <label><span className="label">Course</span><select className="input" value={form.course_id} onChange={e => {const v=e.target.value;setForm(p => ({...p, course_id:v, course_section_id:''}));fetchSections(v)}}><option value="">Select a course</option>{courses.map(x => <option key={x.id} value={x.id}>{x.title_en}</option>)}</select></label>
           <label><span className="label">Course section</span><select className="input" value={form.course_section_id} disabled={!form.course_id || loadingSections} onChange={e => change('course_section_id', e.target.value)}><option value="">{loadingSections ? 'Loading sections...' : 'No section'}</option>{sections.map(x => <option key={x.id} value={x.id}>{x.title_en}</option>)}</select></label>
           <label><span className="label">Status</span><select className="input" value={form.status} onChange={e => change('status', e.target.value)}><option value="draft">Draft</option><option value="published">Published</option><option value="unpublished">Unpublished</option></select></label>
           {[

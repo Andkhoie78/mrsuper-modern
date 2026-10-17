@@ -1,3 +1,4 @@
+// MRSUPER_FREE_VIDEO_GALLERY_V1
 import {
   BrowserRouter,
   Route,
@@ -45,6 +46,7 @@ import CategoriesAdminPage from "./pages/admin/CategoriesAdminPage";
 import InstructorsAdminPage from "./pages/admin/InstructorsAdminPage";
 import CoursesAdminPage from "./pages/admin/CoursesAdminPage";
 import VideosAdminPage from "./pages/admin/VideosAdminPage";
+import PublicVideosAdminPage from "./pages/admin/PublicVideosAdminPage";
 import PaymentsAdminPage from "./pages/admin/PaymentsAdminPage";
 import BankAccountsAdminPage from "./pages/admin/BankAccountsAdminPage";
 import HomepageAdminPage from "./pages/admin/HomepageAdminPage";
@@ -250,6 +252,11 @@ export default function App() {
 
               <Route
                 path="videos"
+                element={<PublicVideosAdminPage />}
+              />
+
+              <Route
+                path="course-lessons"
                 element={<VideosAdminPage />}
               />
 

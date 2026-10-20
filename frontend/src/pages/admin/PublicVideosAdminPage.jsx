@@ -1,3 +1,6 @@
+// MRSUPER_PROMO_150MB_CHUNKED_V1: Promotional Videos (not Course Lessons / Short Videos).
+// MRSUPER_VIDEO_LABEL_ONLY_V1: Admin page/button labels only
+// MRSUPER_TELEGRAM_OPTIONAL_V2: Telegram URL is optional for promotional videos.
 // MRSUPER_TELEGRAM_PROMOS_V1: separate from homepage Short Videos and paid Course Lessons.
 import {useEffect, useRef, useState} from 'react';
 import {CheckCircle2, Film, Pencil, Plus, Trash2, ExternalLink} from 'lucide-react';
@@ -7,7 +10,8 @@ import Modal from '../../components/Modal';
 const empty = {name:'', description:'', telegram_url:'', video:null, thumbnail:null};
 const allowedVideos = ['video/mp4','video/webm'];
 const allowedImages = ['image/png','image/jpeg','image/webp'];
-const VIDEO_MAX = 20*1024*1024;
+const VIDEO_MAX = 150*1024*1024;
+const LARGE_UPLOAD_THRESHOLD = 48*1024*1024;
 const IMAGE_MAX = 8*1024*1024;
 const telegramURL = input => {
   try {
@@ -40,6 +44,32 @@ function FilePreview({record,video,thumbnail}){
     </div>
   </div>;
 }
+// MRSUPER_PROMO_150MB_CHUNKED_V1: send only 8 MiB at a time to bypass proxy request-size caps.
+async function uploadLargePromotionalVideo(file,onProgress){
+  const {data:start}=await api.post('/admin/video-chunks/start',{file_size:file.size,mime_type:file.type});
+  const parts=[];let finished=false;
+  try {
+    for(let i=0;i<start.part_count;i++){
+      const from=i*start.part_size;
+      const blob=file.slice(from,Math.min(from+start.part_size,file.size));
+      const fd=new FormData();
+      fd.append('upload_token',start.upload_token);
+      fd.append('part_number',String(i+1));
+      fd.append('chunk',blob,'part-'+(i+1)+'.bin');
+      const {data:receipt}=await api.post('/admin/video-chunks/part',fd,{onUploadProgress:e=>{
+        if(e.total)onProgress(Math.min(95,Math.round((from+Math.min(blob.size,e.loaded))/file.size*95)));
+      }});
+      parts.push({part_number:i+1,etag:receipt.etag});
+      onProgress(Math.min(95,Math.round(Math.min(file.size,from+blob.size)/file.size*95)));
+    }
+    await api.post('/admin/video-chunks/finish',{upload_token:start.upload_token,parts});
+    finished=true;onProgress(97);
+    return start.upload_token;
+  }catch(err){
+    if(!finished)await api.post('/admin/video-chunks/abort',{upload_token:start.upload_token}).catch(()=>{});
+    throw err;
+  }
+}
 export default function PublicVideosAdminPage(){
   const [rows,setRows]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -63,46 +93,49 @@ export default function PublicVideosAdminPage(){
     let accepted=false;
     try {
       if(!form.name.trim())throw new Error('Write a video name.');
-      if(!telegramURL(form.telegram_url))throw new Error('Add a valid Telegram video link, for example https://t.me/channelname/123');
+      if(form.telegram_url.trim() && !telegramURL(form.telegram_url))throw new Error('Telegram link is optional, but if entered it must be a valid HTTPS Telegram URL.');
       if(!current && !(form.video instanceof File))throw new Error('Choose a short MP4 or WebM promotional preview.');
-      if(form.video && (!allowedVideos.includes(form.video.type)||form.video.size===0||form.video.size>VIDEO_MAX))throw new Error('Video preview must be MP4 or WebM, max 20 MB.');
+      if(form.video && (!allowedVideos.includes(form.video.type)||form.video.size===0||form.video.size>VIDEO_MAX))throw new Error('Video preview must be MP4 or WebM, max 150 MB.');
       if(form.thumbnail && (!allowedImages.includes(form.thumbnail.type)||form.thumbnail.size===0||form.thumbnail.size>IMAGE_MAX))throw new Error('Cover must be JPG, PNG or WebP, max 8 MB.');
       setSaving(true);await csrf();
+      const uploadedToken=form.video && form.video.size>LARGE_UPLOAD_THRESHOLD
+        ? await uploadLargePromotionalVideo(form.video,setProgress):'';
       const fd=new FormData();
       // Single name and description are used in both site languages to avoid an incomplete listing.
       fd.append('title_en',form.name.trim());fd.append('title_fa',form.name.trim());
       fd.append('description_en',form.description.trim());fd.append('description_fa',form.description.trim());
       fd.append('full_video_url',form.telegram_url.trim());
       fd.append('status','published');
-      if(form.video)fd.append('video',form.video,form.video.name);
+      if(uploadedToken)fd.append('uploaded_video_token',uploadedToken);
+      else if(form.video)fd.append('video',form.video,form.video.name);
       if(form.thumbnail)fd.append('thumbnail',form.thumbnail,form.thumbnail.name);
       const {data:result}=await api.post(current?`/admin/showcase-videos/${current.id}`:'/admin/showcase-videos',fd,{onUploadProgress:e=>{if(e.total)setProgress(Math.min(100,Math.round(e.loaded/e.total*100)))}});
       accepted=true;
       const id=current?.id||result?.id;
       if(!id)throw new Error('Server accepted save but no ID returned; check the list before retrying.');
       const {data:verified}=await api.get(`/admin/showcase-videos/${id}`);
-      if(verified.title_en!==form.name.trim()||verified.status!=='published'||!verified.has_video||verified.course_id!=null||!Boolean(verified.is_free)||verified.full_video_url!==new URL(form.telegram_url).href)throw new Error('Saved video could not be fully verified. Check the list before retrying.');
+      if(verified.title_en!==form.name.trim()||verified.status!=='published'||!verified.has_video||verified.course_id!=null||!Boolean(verified.is_free)||verified.full_video_url!==(form.telegram_url.trim()?new URL(form.telegram_url.trim()).href:''))throw new Error('Saved video could not be fully verified. Check the list before retrying.');
       await reload();setOpen(false);setNotice(`Promotional video ${current?'updated':'added'} successfully.`);
     }catch(e){setError(`${accepted?'Save may have succeeded. Check the list before retrying. ':''}${messageFrom(e)}`)}finally{setSaving(false);setProgress(null);lock.current=false}
   }
   async function remove(row){if(saving||deleting!==null)return;if(!window.confirm(`Delete promotional video "${row.title_en}"? Videos with payment history cannot be deleted.`))return;setError('');setNotice('');setDeleting(row.id);try{await csrf();await api.delete(`/admin/showcase-videos/${row.id}`);await reload();setNotice('Video deleted successfully.')}catch(e){setError(messageFrom(e))}finally{setDeleting(null)}}
   return <>
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-black">Promotional Videos</h1><p className="mt-1 muted">Academy promotions, scientific trips, and activities. Add a short preview and a link to watch the complete video on Telegram. Completely free.</p></div><button type="button" className="btn-primary" disabled={saving||deleting!==null} onClick={add}><Plus size={17}/>Add Promotional Video</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-black">Videos</h1><p className="mt-1 muted">Academy promotions, scientific trips, and activities. Upload a short promotional clip. A Telegram link for the full video is optional. Completely free.</p></div><button type="button" className="btn-primary" disabled={saving||deleting!==null} onClick={add}><Plus size={17}/>Add Video</button></div>
     {notice&&<p role="status" className="mt-4 rounded-xl bg-green-50 p-3 text-sm text-green-800"><CheckCircle2 size={16} className="mr-2 inline"/>{notice}</p>}
     {error&&!open&&<p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     <div className="card mt-6 overflow-auto">{loading?<p className="p-5 muted">Loading...</p>:rows.length?<table className="admin-table"><thead><tr><th>Video</th><th>Telegram full video</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(v=><tr key={v.id}><td><div className="flex items-center gap-3">{v.thumbnail_path?<img src={asset(v.thumbnail_path)} alt="" className="h-12 w-20 rounded-lg bg-slate-100 object-cover"/>:<Film size={24} className="text-slate-400"/>}<span className="font-semibold">{v.title_fa||v.title_en}</span></div></td><td>{telegramURL(v.full_video_url)?<a href={v.full_video_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-700 underline">Watch on Telegram <ExternalLink size={13}/></a>:<span className="text-amber-700">No Telegram link</span>}</td><td>{v.status==='published'?'Published':v.status}</td><td><div className="flex gap-2"><button type="button" className="rounded-lg p-2 hover:bg-blue-50" title="Edit video" onClick={()=>edit(v)} disabled={deleting!==null}><Pencil size={16}/></button><button type="button" className="rounded-lg p-2 text-red-600 hover:bg-red-50" title="Delete video" disabled={deleting!==null} onClick={()=>remove(v)}>{deleting===v.id?'Deleting...':<Trash2 size={16}/>}</button></div></td></tr>)}</tbody></table>:<p className="p-6 text-sm muted">No promotional videos have been added yet.</p>}</div>
-    <Modal open={open} wide title={current?'Edit Promotional Video':'Add Promotional Video'} onClose={close}>
+    <Modal open={open} wide title={current?'Edit Video':'Add Video'} onClose={close}>
       <form onSubmit={save} className="grid gap-4 md:grid-cols-2">
         <fieldset disabled={saving} className="contents">
           <label className="md:col-span-2"><span className="label">Video name</span><input className="input" value={form.name} maxLength={255} required onChange={e=>change('name',e.target.value)} placeholder="e.g. Scientific trip to Bamyan"/></label>
           <label className="md:col-span-2"><span className="label">Description</span><textarea className="input min-h-28" value={form.description} onChange={e=>change('description',e.target.value)} placeholder="A short explanation of this activity..."/></label>
-          <label className="md:col-span-2"><span className="label">Full video link on Telegram</span><input type="url" className="input" required value={form.telegram_url} onChange={e=>change('telegram_url',e.target.value)} placeholder="https://t.me/channelname/123"/><span className="mt-1 block text-xs muted">Use a link to the full video post on Telegram. Viewers may need Telegram to open it.</span>{telegramURL(form.telegram_url)&&<a className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-blue-700 underline" target="_blank" rel="noopener noreferrer" href={form.telegram_url}>Test Telegram link <ExternalLink size={12}/></a>}</label>
-          <label><span className="label">Short promotional preview (MP4/WebM, max 20 MB){current?' · optional replacement':''}</span><input className="input" type="file" accept="video/mp4,video/webm" required={!current} onChange={e=>change('video',e.target.files?.[0]||null)}/></label>
+          <label className="md:col-span-2"><span className="label">Full video link on Telegram (optional)</span><input type="url" className="input" value={form.telegram_url} onChange={e=>change('telegram_url',e.target.value)} placeholder="https://t.me/channelname/123"/><span className="mt-1 block text-xs muted">Leave empty if there is no full video. The Telegram button appears only when a valid link is saved.</span>{telegramURL(form.telegram_url)&&<a className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-blue-700 underline" target="_blank" rel="noopener noreferrer" href={form.telegram_url}>Test Telegram link <ExternalLink size={12}/></a>}</label>
+          <label><span className="label">Short promotional preview (MP4/WebM, max 150 MB){current?' · optional replacement':''}</span><input className="input" type="file" accept="video/mp4,video/webm" required={!current} onChange={e=>change('video',e.target.files?.[0]||null)}/></label>
           <label><span className="label">Cover image (optional, JPG/PNG/WebP)</span><input className="input" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>change('thumbnail',e.target.files?.[0]||null)}/></label>
           <FilePreview record={current} video={form.video} thumbnail={form.thumbnail}/>
         </fieldset>
         {error&&<p role="alert" className="md:col-span-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-        <button type="submit" disabled={saving} className="btn-primary md:col-span-2">{saving?`Saving...${progress===null?'':` ${progress}% uploaded`}`:current?'Save Changes':'Publish Promotional Video'}</button>
+        <button type="submit" disabled={saving} className="btn-primary md:col-span-2">{saving?`Saving...${progress===null?'':` ${progress}% uploaded`}`:current?'Save Changes':'Publish Video'}</button>
       </form>
     </Modal>
   </>;

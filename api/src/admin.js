@@ -1,8 +1,10 @@
+// MRSUPER_PROMO_150MB_CHUNKED_V1: Videos up to 150 MiB, securely assembled in Cloudflare R2.
 // MRSUPER_TELEGRAM_OPTIONAL_V2: Telegram URL is optional for promotional videos.
 // MRSUPER_FREE_VIDEO_GALLERY_V1
 import {r2Enabled,getR2} from './r2-storage.js';
 import {q,one,insert,update,page,http,requireFields,safeInt,str,bool,slug,prepared,fields,saveUpload,clearCache,pool,notify,cleanUser,mediaRoot} from './core.js';
 import {requireAdmin} from './auth.js';
+import {registerShowcaseChunkRoutes,verifiedShowcaseMultipart} from './video-large-upload.js';
 import {ensureShowcaseLinks,cleanFullVideoUrl,readShowcaseLink} from './showcase-links.js';
 import {decorateCourses,decorateVideos} from './public.js';
 import {join} from 'node:path';
@@ -36,6 +38,7 @@ async function enrichPayments(payments){
 }
 async function paymentDetails(p){return (await enrichPayments(p?[p]:[]))[0]||null}
 export function adminRoutes(app){
+  registerShowcaseChunkRoutes(app);
  for(const [table,prefix] of Object.entries({categories:'/api/admin/categories',instructors:'/api/admin/instructors',courses:'/api/admin/courses',videos:'/api/admin/videos',bank_accounts:'/api/admin/bank-accounts',banners:'/api/admin/cms/banners',homepage_sections:'/api/admin/cms/sections',short_videos:'/api/admin/cms/short-videos',navigation_items:'/api/admin/cms/navigation'}))createCrud(app,table,prefix);
   // MRSUPER_VIDEO_ADMIN_FIX_V1: private, authenticated streaming for Admin review (including drafts).
   app.get('/api/admin/videos/:id',async(req)=>{
@@ -112,7 +115,7 @@ export function adminRoutes(app){
     return {...safeVideo(saved),full_video_url:await readShowcaseLink(saved.id)};
   });
   const saveShowcase=async(req,reply,editing)=>{
-    await requireAdmin(req);
+    const uploadActor=await requireAdmin(req);
     await ensureShowcaseLinks();
     const existing=editing?await publicVideoRow(req.params.id):null;
     const body=req.body||{};
@@ -121,9 +124,14 @@ export function adminRoutes(app){
     const clean=Object.fromEntries(showcaseFields.filter(k=>Object.hasOwn(body,k)).map(k=>[k,body[k]]));
     // Published public promotions only. Course lessons and paid videos remain separate.
     const payload={...clean,course_id:'',course_section_id:'',price:'0',currency:'AFN',is_free:'1',is_preview:'0',status};
-    if(!editing){requireFields(payload,['title_en','video']);}
+    if(body.uploaded_video_token && body.video)throw http(422,'Choose either a direct video or a large uploaded video.');
+    if(!editing){requireFields(payload,['title_en']);if(!payload.video&&!body.uploaded_video_token)throw http(422,'A video file is required.');}
     if(!String(payload.title_en||existing?.title_en||'').trim())throw http(422,'English title is required.');
     const data=await prepareRecord('videos',payload,Boolean(existing));
+    if(body.uploaded_video_token){
+      const uploaded=await verifiedShowcaseMultipart(body.uploaded_video_token,uploadActor);
+      data.video_path=uploaded.key;data.mime_type=uploaded.mime;data.file_size=uploaded.size;
+    }
     if(!existing && !data.video_path)throw http(422,'A short preview video is required.');
     if(!existing){data.video_path=data.video_path||'';data.mime_type=data.mime_type||'video/mp4';}
     if(existing && status==='published'&&!existing.published_at)data.published_at=new Date();

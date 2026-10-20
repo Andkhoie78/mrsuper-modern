@@ -1,4 +1,4 @@
-import {S3Client, PutObjectCommand, GetObjectCommand} from '@aws-sdk/client-s3';
+import {S3Client, PutObjectCommand, GetObjectCommand, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, HeadObjectCommand} from '@aws-sdk/client-s3';
 
 const configKeys = [
   'R2_ENDPOINT', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
@@ -56,4 +56,29 @@ export async function getR2(kind, key, range) {
     }
     throw e;
   }
+}
+
+// MRSUPER_PROMO_150MB_CHUNKED_V1: authenticated large promotional videos only.
+export async function createPrivateVideoMultipart(key,mime){
+  if(!r2Enabled)throw new Error('Cloudflare R2 is not configured');
+  const out=await client.send(new CreateMultipartUploadCommand({Bucket:process.env.R2_PRIVATE_BUCKET,Key:key,ContentType:mime,CacheControl:'private,no-store'}));
+  if(!out.UploadId)throw new Error('R2 did not return an upload ID');return out.UploadId;
+}
+export async function sendPrivateVideoPart(key,uploadId,number,buffer){
+  if(!r2Enabled)throw new Error('Cloudflare R2 is not configured');
+  const out=await client.send(new UploadPartCommand({Bucket:process.env.R2_PRIVATE_BUCKET,Key:key,UploadId:uploadId,PartNumber:number,Body:buffer,ContentLength:buffer.length}));
+  return out.ETag;
+}
+export async function finishPrivateVideoMultipart(key,uploadId,parts){
+  if(!r2Enabled)throw new Error('Cloudflare R2 is not configured');
+  return client.send(new CompleteMultipartUploadCommand({Bucket:process.env.R2_PRIVATE_BUCKET,Key:key,UploadId:uploadId,MultipartUpload:{Parts:parts}}));
+}
+export async function abortPrivateVideoMultipart(key,uploadId){
+  if(!r2Enabled)return;
+  return client.send(new AbortMultipartUploadCommand({Bucket:process.env.R2_PRIVATE_BUCKET,Key:key,UploadId:uploadId}));
+}
+export async function headPrivateVideo(key){
+  if(!r2Enabled)return null;
+  try{return await client.send(new HeadObjectCommand({Bucket:process.env.R2_PRIVATE_BUCKET,Key:key}));}
+  catch(e){if(e?.name==='NotFound'||e?.name==='NoSuchKey'||e?.$metadata?.httpStatusCode===404)return null;throw e}
 }

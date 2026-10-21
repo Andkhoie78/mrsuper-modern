@@ -38,6 +38,16 @@ async function enrichPayments(payments){
 }
 async function paymentDetails(p){return (await enrichPayments(p?[p]:[]))[0]||null}
 export function adminRoutes(app){
+  // MRSUPER_SECTION_IMAGE_VIDEO_LABELS_V3: admin-only optional image upload for custom homepage sections.
+  // The existing saveUpload helper validates MIME and file signature and writes to public R2.
+  app.post('/api/admin/cms/section-image',async(req)=>{
+    await requireAdmin(req);
+    const file=req.body?.image;
+    if(!file||typeof file.toBuffer!=='function')throw http(422,'Choose an image to upload.');
+    const path=await saveUpload(file,'public/sections',8*1024*1024,photos);
+    return {path};
+  });
+
   registerShowcaseChunkRoutes(app);
  for(const [table,prefix] of Object.entries({categories:'/api/admin/categories',instructors:'/api/admin/instructors',courses:'/api/admin/courses',videos:'/api/admin/videos',bank_accounts:'/api/admin/bank-accounts',banners:'/api/admin/cms/banners',homepage_sections:'/api/admin/cms/sections',short_videos:'/api/admin/cms/short-videos',navigation_items:'/api/admin/cms/navigation'}))createCrud(app,table,prefix);
   // MRSUPER_VIDEO_ADMIN_FIX_V1: private, authenticated streaming for Admin review (including drafts).
